@@ -28,7 +28,7 @@
 # --recursive --exclude "*" --include "*.ipynb" --include "*.py" --exclude "*/*"
 
 
-# In[1]:
+# In[16]:
 
 
 import argparse
@@ -175,7 +175,7 @@ tokenizer=AutoTokenizer.from_pretrained(model_checkpoint)
 # test_df1.save_to_disk('test_df')
 
 
-# In[2]:
+# In[17]:
 
 
 def statistics_compute(hf_df1,hf_df2,hf_df3,p=1):
@@ -223,12 +223,13 @@ def style_format(token_count_df,  textbody="preprocessed_email"):
     }])
 
 
-# In[3]:
+# In[19]:
 
 
-train_df1=load_from_disk("./train_df")
-val_df1=load_from_disk("./val_df")
-test_df1=load_from_disk("./test_df")
+data_dir=os.path.join("/opt/omniai/work/instance1/jupyter/","email-complaints","datasets")
+train_df1=load_from_disk(os.path.join(data_dir,"train_df"))
+val_df1=load_from_disk(os.path.join(data_dir,"val_df"))
+test_df1=load_from_disk(os.path.join(data_dir,"test_df"))
 
 
 # In[4]:
@@ -379,7 +380,7 @@ for i in range(10):
 
 
 
-# In[29]:
+# In[3]:
 
 
 text="""
@@ -402,16 +403,18 @@ have any questions, please do not hesitate to reach out. We aim to exceed your e
 """
 
 
-# In[36]:
+# In[2]:
 
 
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-model_checkpoint=os.path.join(os.getcwd(), "transformers-models","longformer-base-4096")
+import os
+model_checkpoint=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","longformer-large-4096")
+
 tokenizer=AutoTokenizer.from_pretrained(model_checkpoint)
 model=AutoModelForSequenceClassification.from_pretrained(model_checkpoint)
 
 
-# In[37]:
+# In[4]:
 
 
 import torch
@@ -420,23 +423,32 @@ with torch.no_grad():
     logits = model(**inputs).logits
 
 
-# In[32]:
+# In[5]:
 
 
 logits
 
 
-# In[33]:
+# In[6]:
 
 
 predicted_class_id = logits.argmax().item()
 model.config.id2label[predicted_class_id]
 
 
-# In[34]:
+# In[12]:
 
 
-inputs = tokenizer("This movie is fantastic", return_tensors="pt")
+inputs = tokenizer("It is awful to see this great movie is over", return_tensors="pt")
+with torch.no_grad():
+    logits = model(**inputs).logits
+logits
+
+
+# In[11]:
+
+
+inputs = tokenizer("It is great to see this awful movie is over", return_tensors="pt")
 with torch.no_grad():
     logits = model(**inputs).logits
 logits
