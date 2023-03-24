@@ -11,5 +11,6 @@ python CTO_centillion.py --model_name finGloVe_100dim --model_version 1.0
 python CTO_centillion.py --model_name finGloVe_300dim --model_version 1.0
 
 # tar -xvzf finGloVe_100d.tar.gz  -C ./Glove_w2v/
-tar -xvzf longformer-large-4096.tar.zip  
+tar -xvzf longformer-large-4096.tar.zip  -C ./longformer-large-4096/
+
 
