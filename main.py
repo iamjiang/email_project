@@ -301,7 +301,7 @@ if __name__=="__main__":
 
     parser.add_argument("--truncation_strategy", type=str, default="head",help="how to truncate the long length email")
     parser.add_argument("--train_batch_size", type=int, default=2)
-    parser.add_argument("--test_batch_size", type=int, default=1000)
+    parser.add_argument("--test_batch_size", type=int, default=2)
     parser.add_argument('--num_epochs', type=int, default=10)
     parser.add_argument("--gradient_accumulation_steps",type=int,default=8,
                                help="Number of updates steps to accumulate before performing a backward/update pass.")
