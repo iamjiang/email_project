@@ -24,6 +24,8 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 from datasets import load_dataset, load_metric, concatenate_datasets,DatasetDict,Dataset
 from datasets import load_from_disk
+from datasets import disable_caching, enable_caching
+enable_caching()
 
 import transformers
 print("Transformers version is {}".format(transformers.__version__))
@@ -61,23 +63,24 @@ def seed_everything(seed):
     
 def main(args,train_data, val_data, test_data, device):
 
-    train_data=Dataset.from_pandas(train_data)
-    val_data=Dataset.from_pandas(val_data)
-    test_data=Dataset.from_pandas(test_data)
+    train_df=Dataset.from_pandas(train_data)
+    val_df=Dataset.from_pandas(val_data)
+    test_df=Dataset.from_pandas(test_data)
     
     model_checkpoint=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models",args.model_checkpoint)
-    tokenizer=AutoTokenizer.from_pretrained(model_checkpoint)
+    config=AutoConfig.from_pretrained(model_checkpoint)
+    tokenizer=AutoTokenizer.from_pretrained(model_checkpoint,model_max_length=config.max_position_embeddings-2)
     model=AutoModelForSequenceClassification.from_pretrained(model_checkpoint)
-
+    
     print()
-    print(f"The maximal # input tokens : {tokenizer.model_max_length:,}")
+    print(f"The maximal # input tokens : {config.max_position_embeddings-2:,}")
     print(f"Vocabulary size : {tokenizer.vocab_size:,}")
     print(f"The # of parameters : {sum([p.nelement() for p in model.parameters()]):,}")
     print()
     
-    train_module=utils.Loader_Creation(train_data, tokenizer,args.feature_name)
-    val_module=utils.Loader_Creation(val_data, tokenizer,args.feature_name)
-    test_module=utils.Loader_Creation(test_data, tokenizer,args.feature_name)
+    train_module=utils.Loader_Creation(train_df, tokenizer,args.feature_name)
+    val_module=utils.Loader_Creation(val_df, tokenizer,args.feature_name)
+    test_module=utils.Loader_Creation(test_df, tokenizer,args.feature_name)
 
 #     train_indices, val_indices=utils.mask_creation(df_train, 'label', args.seed, args.validation_split)
 
@@ -88,27 +91,27 @@ def main(args,train_data, val_data, test_data, device):
 
     train_dataloader=DataLoader(train_module,
                                 shuffle=True,
-                                batch_size=args.batch_size,
+                                batch_size=args.train_batch_size,
                                 collate_fn=train_module.collate_fn,
                                 drop_last=False   # longformer model bug
                                )
     
 #     train_dataloader=DataLoader(train_module,
 #                                 sampler=train_sampler,
-#                                 batch_size=args.batch_size,
+#                                 batch_size=args.train_batch_size,
 #                                 collate_fn=train_module.collate_fn,
 #                                 drop_last=True   # longformer model bug
 #                                )
 
     valid_dataloader=DataLoader(val_module,
                                 shuffle=False,
-                                batch_size=args.batch_size,
+                                batch_size=args.test_batch_size,
                                 collate_fn=train_module.collate_fn
                                )
 
     test_dataloader=DataLoader(test_module,
                                 shuffle=False,
-                                batch_size=args.batch_size,
+                                batch_size=args.test_batch_size,
                                 collate_fn=test_module.collate_fn
                                )
 
@@ -117,10 +120,10 @@ def main(args,train_data, val_data, test_data, device):
 
     print()
     print('{:<30}{:<10,} '.format("training mini-batch",len(train_dataloader)))
-#     print('{:<30}{:<10,} '.format("validation mini-batch",len(valid_dataloader)))
+    print('{:<30}{:<10,} '.format("validation mini-batch",len(valid_dataloader)))
     print('{:<30}{:<10,} '.format("test mini-batch",len(test_dataloader)))
     
-    train_label=df_train['label'].values.squeeze()
+    train_label=train_data['target'].values.squeeze()
     num_classes=np.unique(train_label).shape[0]
     if args.loss_weight:
         train_classes_num, train_classes_weight = utils.get_class_count_and_weight(train_label,num_classes)
@@ -129,53 +132,53 @@ def main(args,train_data, val_data, test_data, device):
         loss_weight=None
         
 
-#     t_total = int((len(train_dataloader) // args.batch_size)//args.gradient_accumulation_steps*float(args.num_epochs))
+    t_total = int((len(train_dataloader) // args.train_batch_size)//args.gradient_accumulation_steps*float(args.num_epochs))
 
-#     warmup_steps=int((len(train_dataloader) // args.batch_size)//args.gradient_accumulation_steps*args.warmup_ratio)
+    warmup_steps=int((len(train_dataloader) // args.train_batch_size)//args.gradient_accumulation_steps*args.warmup_ratio)
 
-#     no_decay = ["bias", "LayerNorm.weight"]
-#     optimizer_grouped_parameters = [
-#                 {
-#                     "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-#                     "weight_decay": args.weight_decay,
-#                 },
-#                 {
-#                     "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-#                     "weight_decay": 0.0,
-#                 },
-#             ]
+    no_decay = ["bias", "LayerNorm.weight"]
+    optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "weight_decay": args.weight_decay,
+                },
+                {
+                    "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0,
+                },
+            ]
 
-#     optimizer = AdamW(optimizer_grouped_parameters, lr=args.lr, eps=args.adam_epsilon)
-#     # optimizer=AdamW(model.parameters(),lr=args.lr)
-#     #     lr_scheduler =get_linear_schedule_with_warmup(optimizer, 
-#     #                                                   num_warmup_steps=warmup_steps, 
-#     #                                                   num_training_steps=t_total
-#     #                                                  )
+    optimizer = AdamW(optimizer_grouped_parameters, lr=args.lr, eps=args.adam_epsilon)
+    # optimizer=AdamW(model.parameters(),lr=args.lr)
+    #     lr_scheduler =get_linear_schedule_with_warmup(optimizer, 
+    #                                                   num_warmup_steps=warmup_steps, 
+    #                                                   num_training_steps=t_total
+    #                                                  )
 
-#     lr_scheduler = get_scheduler(name=args.lr_scheduler_type, 
-#                                  optimizer=optimizer,
-#                                  num_warmup_steps=warmup_steps,
-#                                  num_training_steps=t_total)
+    lr_scheduler = get_scheduler(name=args.lr_scheduler_type, 
+                                 optimizer=optimizer,
+                                 num_warmup_steps=warmup_steps,
+                                 num_training_steps=t_total)
     
-#     accelerator = Accelerator(fp16=args.fp16)
-#     acc_state = {str(k): str(v) for k, v in accelerator.state.__dict__.items()}
-#     if accelerator.is_main_process:
-#         accelerator.print("")
-#         logger.info(f'Accelerator Config: {acc_state}')
-#         accelerator.print("")
+    accelerator = Accelerator(fp16=args.fp16)
+    acc_state = {str(k): str(v) for k, v in accelerator.state.__dict__.items()}
+    if accelerator.is_main_process:
+        accelerator.print("")
+        logger.info(f'Accelerator Config: {acc_state}')
+        accelerator.print("")
     
-# #     model, optimizer, train_dataloader, valid_dataloader, test_dataloader = accelerator.prepare(
-# #         model, optimizer, train_dataloader, valid_dataloader, test_dataloader
-# #     )
-    
-#     model, optimizer, train_dataloader, test_dataloader = accelerator.prepare(
-#         model, optimizer, train_dataloader, test_dataloader
+#     model, optimizer, train_dataloader, valid_dataloader, test_dataloader = accelerator.prepare(
+#         model, optimizer, train_dataloader, valid_dataloader, test_dataloader
 #     )
     
-#     best_metric = float('inf')
-#     # best_metric = 0
+    model, optimizer, train_dataloader, test_dataloader = accelerator.prepare(
+        model, optimizer, train_dataloader, test_dataloader
+    )
     
-#     iter_tput = []
+    best_metric = float('inf')
+    # best_metric = 0
+    
+    iter_tput = []
     
 #     for epoch in tqdm(range(args.num_epochs),position=0 ,leave=True):
         
@@ -189,7 +192,7 @@ def main(args,train_data, val_data, test_data, device):
 #             outputs=model(**batch)
 # #             loss=outputs.loss
 #             # print(outputs)
-#             logits=outputs.loss['logits']
+#             logits=outputs['logits']
             
 #             if loss_weight is None:
 #                 loss = F.cross_entropy(logits.view(-1, num_classes).to(accelerator.device),batch["labels"])
@@ -297,7 +300,8 @@ if __name__=="__main__":
             help="random seed for np.random.seed, torch.manual_seed and torch.cuda.manual_seed.")
 
     parser.add_argument("--truncation_strategy", type=str, default="head",help="how to truncate the long length email")
-    parser.add_argument("--batch_size", type=int, default=2)
+    parser.add_argument("--train_batch_size", type=int, default=2)
+    parser.add_argument("--test_batch_size", type=int, default=1000)
     parser.add_argument('--num_epochs', type=int, default=10)
     parser.add_argument("--gradient_accumulation_steps",type=int,default=8,
                                help="Number of updates steps to accumulate before performing a backward/update pass.")
@@ -353,8 +357,8 @@ if __name__=="__main__":
     
     model_checkpoint=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models",args.model_checkpoint)
     config=AutoConfig.from_pretrained(model_checkpoint)
-    tokenizer=AutoTokenizer.from_pretrained(model_checkpoint)
-    max_seq_length=config.max_position_embeddings
+    tokenizer=AutoTokenizer.from_pretrained(model_checkpoint,model_max_length=config.max_position_embeddings-2)
+    max_seq_length=config.max_position_embeddings-2
     def truncation_text(example):
         truncated_input_ids=tokenizer(example[args.feature_name],truncation=True,padding=False,return_tensors="pt",add_special_tokens=False)['input_ids']
 
@@ -398,8 +402,17 @@ if __name__=="__main__":
         print('No GPU available, using the CPU instead.')
         device = torch.device("cpu")
     
-    train_data=hf_data['train'].set_format(type="pandas")[:]
-    val_data=hf_data['validation'].set_format(type="pandas")[:]
-    test_data=hf_data['test'].set_format(type="pandas")[:]
+    train_data=hf_data['train']
+    train_data.set_format(type="pandas")
+    train_data=train_data[:]
     
+    val_data=hf_data['validation']
+    val_data.set_format(type="pandas")
+    val_data=val_data[:]
+    
+    test_data=hf_data['test']
+    test_data.set_format(type="pandas")
+    test_data=test_data[:]
+    
+    main(args,train_data, val_data, test_data, device)
     
