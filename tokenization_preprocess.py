@@ -78,9 +78,9 @@ train_df1=train_df1.map(compute_lenth)
 val_df1=val_df1.map(compute_lenth)
 test_df1=test_df1.map(compute_lenth)
 
-train_df1=train_df1.filter(lambda x: x['text_length']>10)
-val_df1=val_df1.filter(lambda x: x['text_length']>10)
-test_df1=test_df1.filter(lambda x: x['text_length']>10)
+# train_df1=train_df1.filter(lambda x: x['text_length']>10)
+# val_df1=val_df1.filter(lambda x: x['text_length']>10)
+# test_df1=test_df1.filter(lambda x: x['text_length']>10)
 
 train_df1.save_to_disk(os.path.join(data_dir,'train_df'))
 val_df1.save_to_disk(os.path.join(data_dir,'val_df'))
