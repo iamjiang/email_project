@@ -180,7 +180,7 @@ def find_optimal_threshold(y_true, y_pred, min_recall=0.85, pos_label=False):
     return result_df.threshold.values[0]
 
 
-def eval_func(data_loader,model,tokenizer,device,benchmark,num_classes=2,loss_weight=None,goodToken="positive",badToken="negative"):
+def eval_func(data_loader,model,tokenizer,device,num_classes=2,loss_weight=None,goodToken="positive",badToken="negative"):
     
     good=tokenizer.convert_tokens_to_ids(goodToken)
     bad=tokenizer.convert_tokens_to_ids(badToken)
@@ -205,7 +205,6 @@ def eval_func(data_loader,model,tokenizer,device,benchmark,num_classes=2,loss_we
         pred=predictions.gather(1, mask_pos.unsqueeze(-1).unsqueeze(-1).expand(-1,-1,tokenizer.vocab_size)).squeeze(1) ## dim=batch_size * vocab_size
         logits=pred[:,[good,bad]] ## dim=batch_size * 2
         prob=torch.nn.functional.softmax(logits, dim=1)
-        logits=logits/(benchmark.expand_as(logits).to(device))  #### normalized with benchmark
         if loss_weight is None:
             loss = F.cross_entropy(logits.view(-1, num_classes).to(device), batch["labels"])
         else:

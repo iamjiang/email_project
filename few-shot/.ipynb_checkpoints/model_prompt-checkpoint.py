@@ -1,13 +1,16 @@
 from transformers import AutoModelForMaskedLM , AutoTokenizer, AutoConfig
 import torch
 import wrapper
+from tqdm import tqdm
+from torch.utils.data import Dataset, DataLoader
+import time
 
 class Prompting(object):
     """ doc string 
     This class helps us to implement
     Prompt-based Learning Model
     """
-    def __init__(self, **kwargs):
+    def __init__(self, model_path):
         """ constructor 
         parameter:
         ----------
@@ -17,17 +20,16 @@ class Prompting(object):
                 path to tokenizer if different tokenizer is used, 
                 otherwise leave it empty
         """
-        model_path=kwargs['model']
-        
-        if "tokenizer" in kwargs.keys():
-            tokenizer_path= kwargs['tokenizer']
-        else:
-            tokenizer_path= kwargs['model']
             
         self.config=AutoConfig.from_pretrained(model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path,model_max_length=self.config.max_position_embeddings-2)
         self.model = AutoModelForMaskedLM.from_pretrained(model_path)
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path,model_max_length=self.config.max_position_embeddings-2)
         
+        print()
+        print(f"The maximal # input tokens : {self.tokenizer.model_max_length:,}")
+        print(f"Vocabulary size : {self.tokenizer.vocab_size:,}")
+        print(f"The # of parameters to be updated : {sum([p.nelement() for p in self.model.parameters() if p.requires_grad==True]):,}")
+        print()        
         
     def compute_max_seq_len(self) -> int:
         """Compute the maximum sequence length of an input sequence.
@@ -68,30 +70,30 @@ class Prompting(object):
         pred_out=[]
         
         wrapped_text=wrapper.prompt_wrapper(text, prompt, self.tokenizer)
-        wrapped_text=wrapped_text.map(lambda x:self.tokenizer(x['wrapped_email'],return_tensors="pt"), batched=True)
+        wrapped_text=wrapped_text.map(lambda x:self.tokenizer(x['wrapped_email']), batched=True)
         
         wrapped_text.set_format("pandas")
         df=wrapped_text[:]
-        
+        df['target']=df["is_complaint"].map(lambda x: 1 if x=="Y" else 0)
         for index,row in tqdm(df.iterrows(), total=df.shape[0]):
             input={"input_ids":row["input_ids"],'attention_mask':row['attention_mask']}
-            input={a:torch.from_numpy(b).unsqueeze(0).to(device) for a,b in input.items()}
+            input={a:torch.tensor(b).unsqueeze(0).to(device) for a,b in input.items()}
             mask_pos=row["input_ids"].tolist().index(self.tokenizer.mask_token_id)
-            model.eval()
+            self.model.eval()
             with torch.no_grad():
                 self.model=self.model.to(device)
                 outputs = self.model(**input)
                 predictions = outputs[0]
             values, indices=torch.sort(predictions[0, mask_pos],  descending=True)
-            result=list(zip(tokenizer.convert_ids_to_tokens(indices), values))
+            result=list(zip(self.tokenizer.convert_ids_to_tokens(indices), values))
             scores_dict={a:b for a,b in result}
             
             softmax_rt=self.compute_tokens_prob(scores_dict, token_list1, token_list2)
             
             if softmax_rt[1]>threshold[1]:
-                pred_out.append((row["target"],1))
+                pred_out.append((row["snapshot_id"],row["target"],1))
             else:
-                pred_out.append((row["target"],0))
+                pred_out.append((row["snapshot_id"],row["target"],0))
             
         return pred_out
 
@@ -149,7 +151,7 @@ class Prompting(object):
         softmax_rt=torch.nn.functional.softmax(torch.Tensor([score1,score2]), dim=0)
         return softmax_rt        
     
-    def fine_tune(self, sentences, labels, prompt=["[CLS] email :",". this email was [MASK] sentiment [SEP]"],goodToken="positive",badToken="negative"):
+    def fine_tune(self, args, dataloader, labels ,goodToken="positive",badToken="negative"):
         """  
           Fine tune the model
         """
@@ -171,8 +173,9 @@ class Prompting(object):
             mask_pos=tokenized_text.index(self.tokenizer.mask_token)
             outputs = self.model(tokens_tensor)
             predictions = outputs[0]
-            pred=predictions[0, mask_pos][[good,bad]]
-            prob=torch.nn.functional.softmax(pred, dim=0)
+            pred=predictions.gather(1, torch.tensor(mask_pos).unsqueeze(-1).unsqueeze(-1).expand(-1,-1,prompting.tokenizer.vocab_size)).squeeze()
+            pred=pred[:,[good,bad]]
+            prob=torch.nn.functional.softmax(pred, dim=1)
             lossFunc = torch.nn.CrossEntropyLoss()
             loss=lossFunc(prob.unsqueeze(0), torch.tensor([label]))
             loss.backward()

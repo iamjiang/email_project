@@ -10,7 +10,7 @@ class Prompting(object):
     This class helps us to implement
     Prompt-based Learning Model
     """
-    def __init__(self, model_path):
+    def __init__(self, **kwargs):
         """ constructor 
         parameter:
         ----------
@@ -20,16 +20,17 @@ class Prompting(object):
                 path to tokenizer if different tokenizer is used, 
                 otherwise leave it empty
         """
+        model_path=kwargs['model']
+        
+        if "tokenizer" in kwargs.keys():
+            tokenizer_path= kwargs['tokenizer']
+        else:
+            tokenizer_path= kwargs['model']
             
         self.config=AutoConfig.from_pretrained(model_path)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path,model_max_length=self.config.max_position_embeddings-2)
         self.model = AutoModelForMaskedLM.from_pretrained(model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path,model_max_length=self.config.max_position_embeddings-2)
         
-        print()
-        print(f"The maximal # input tokens : {self.tokenizer.model_max_length:,}")
-        print(f"Vocabulary size : {self.tokenizer.vocab_size:,}")
-        print(f"The # of parameters to be updated : {sum([p.nelement() for p in self.model.parameters() if p.requires_grad==True]):,}")
-        print()        
         
     def compute_max_seq_len(self) -> int:
         """Compute the maximum sequence length of an input sequence.

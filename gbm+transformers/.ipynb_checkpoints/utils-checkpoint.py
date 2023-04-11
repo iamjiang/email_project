@@ -9,11 +9,10 @@ from collections import defaultdict
 import argparse
 import logging
 
-from sklearn.metrics import roc_auc_score, f1_score,average_precision_score
+from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score
 from sklearn.metrics import precision_recall_fscore_support 
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import auc 
-from sklearn.metrics import f1_score, precision_score, recall_score
 
 import torch
 import torch.nn as nn
@@ -49,6 +48,63 @@ def format_time(elapsed):
     elapsed_rounded=int(round(elapsed)) ### round to the nearest second.
     return str(datetime.timedelta(seconds=elapsed_rounded))
 
+class Loader_Creation(Dataset):
+    def __init__(self,
+                 dataset,
+                 tokenizer,
+                 feature_name
+                ):
+        super().__init__()
+        self.dataset=dataset
+        self.tokenizer=tokenizer
+        
+        self.dataset=self.dataset.map(lambda x:tokenizer(x[feature_name],truncation=True,padding="max_length"), 
+                                      batched=True)
+        self.dataset.set_format(type="pandas")
+        self.dataset=self.dataset[:]
+    
+    def __len__(self):
+        return self.dataset.shape[0]
+    
+    def __getitem__(self,index):
+        
+        _ids = self.dataset.loc[index]["input_ids"].squeeze()
+        _mask = self.dataset.loc[index]["attention_mask"].squeeze()
+        _target = self.dataset.loc[index]["target"].squeeze()
+        
+        if 'token_type_ids' in self.dataset.columns:
+            token_ids=self.dataset.loc[index]['token_type_ids'].squeeze()
+            return dict(
+                input_ids=_ids,
+                attention_mask=_mask,
+                token_type_ids=token_ids,
+                labels=_target
+            )
+        else:
+            return dict(
+                input_ids=_ids,
+                attention_mask=_mask,
+                labels=_target
+            )
+
+    
+    def collate_fn(self,batch):
+        input_ids=torch.stack([torch.tensor(x["input_ids"]) for x in batch])
+        attention_mask=torch.stack([torch.tensor(x["attention_mask"]) for x in batch])
+        labels=torch.stack([torch.tensor(x["labels"]) for x in batch])
+        
+        pad_token_id=self.tokenizer.pad_token_id
+        keep_mask = input_ids.ne(pad_token_id).any(dim=0)
+        
+        input_ids=input_ids[:, keep_mask]
+        attention_mask=attention_mask[:, keep_mask]
+        
+        return dict(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+        )
+    
 def under_sampling(df_train,target_variable, seed, negative_positive_ratio):
     np.random.seed(seed)
     LABEL=df_train[target_variable].values.squeeze()
@@ -58,6 +114,21 @@ def under_sampling(df_train,target_variable, seed, negative_positive_ratio):
     _idx=np.concatenate([positive_idx,negative_idx])
     under_sampling_train=df_train.loc[_idx,:]
     return under_sampling_train
+
+def split_sample_data(df,random_seed, n=4):
+    np.random.seed(random_seed)
+    LABEL=df[target_variable].values.squeeze()
+    IDX=np.arange(LABEL.shape[0])
+    positive_idx=IDX[LABEL==1]
+    negative_idx=np.random.choice(IDX[LABEL==0],size=IDX[LABEL==0].shape[0])
+    x1,x2,x3,x4=np.split(negative_idx,4)
+    idx_1=np.concatenate([positive_idx,x1])
+    idx_2=np.concatenate([positive_idx,x2])
+    idx_3=np.concatenate([positive_idx,x3])
+    idx_4=np.concatenate([positive_idx,x4])
+    return df.loc[idx_1,:], df.loc[idx_2,:], df.loc[idx_3,:], df.loc[idx_4,:]
+
+                                              
 
 
 def mask_creation(dataset,target_variable, seed, validation_split):
@@ -136,10 +207,7 @@ def evaluate_thresholds(y_true, y_pred, thresholds, pos_label=False):
         y_pred_binary = (y_pred_pos >= threshold).astype(int)
         
         # compute precision, recall, and F1 score for positive samples with label=1
-        if np.sum(y_pred_binary)==0:
-            precision=0
-        else:
-            precision = precision_score(y_true_pos, y_pred_binary)
+        precision = precision_score(y_true_pos, y_pred_binary)
         recall = recall_score(y_true_pos, y_pred_binary)
         f1 = f1_score(y_true_pos, y_pred_binary)
         
@@ -180,11 +248,8 @@ def find_optimal_threshold(y_true, y_pred, min_recall=0.85, pos_label=False):
     return result_df.threshold.values[0]
 
 
-def eval_func(data_loader,model,tokenizer,device,benchmark,num_classes=2,loss_weight=None,goodToken="positive",badToken="negative"):
-    
-    good=tokenizer.convert_tokens_to_ids(goodToken)
-    bad=tokenizer.convert_tokens_to_ids(badToken)
 
+def eval_func(data_loader,model,device,num_classes=2,loss_weight=None):
     model.eval()
     fin_targets=[]
     fin_outputs=[]
@@ -194,22 +259,17 @@ def eval_func(data_loader,model,tokenizer,device,benchmark,num_classes=2,loss_we
 #     for batch_idx, batch in enumerate(data_loader):
     batch_idx=0
     for batch in tqdm(data_loader, position=0, leave=True):
-        # mask_pos=[v.tolist().index(tokenizer.mask_token_id) for v in batch["input_ids"]]
-        mask_pos=[v.tolist().index(tokenizer.mask_token_id) if tokenizer.mask_token_id in v.tolist() else len(v) for v in batch["input_ids"]]
-        mask_pos=torch.tensor(mask_pos).to(device)
         batch={k:v.type(torch.LongTensor).to(device) for k,v in batch.items()}
-        
+        inputs={k:v  for k,v in batch.items() if k!="labels"}
         with torch.no_grad():
-            outputs=model(batch['input_ids'])
-        predictions = outputs[0]
-        pred=predictions.gather(1, mask_pos.unsqueeze(-1).unsqueeze(-1).expand(-1,-1,tokenizer.vocab_size)).squeeze(1) ## dim=batch_size * vocab_size
-        logits=pred[:,[good,bad]] ## dim=batch_size * 2
-        prob=torch.nn.functional.softmax(logits, dim=1)
-        logits=logits/(benchmark.expand_as(logits).to(device))  #### normalized with benchmark
+            outputs=model(**inputs)
+        logits=outputs['logits']
         if loss_weight is None:
-            loss = F.cross_entropy(logits.view(-1, num_classes).to(device), batch["labels"])
+            loss = F.cross_entropy(logits.view(-1, num_classes).to(device), 
+                                   batch["labels"])
         else:
-            loss = F.cross_entropy(logits.view(-1, num_classes).to(device), batch["labels"], weight=loss_weight.float().to(device))
+            loss = F.cross_entropy(logits.view(-1, num_classes).to(device), 
+                                   batch["labels"], weight=loss_weight.float().to(device))
             
         losses.append(loss.item())
         
@@ -222,7 +282,7 @@ def eval_func(data_loader,model,tokenizer,device,benchmark,num_classes=2,loss_we
 
 def model_evaluate(target, y_pred):
     
-    # best_threshold=get_best_threshold(target, predicted)
+    # best_threshold=find_optimal_threshold(target, predicted)
     # y_pred=[1 if x>best_threshold else 0 for x in predicted[:,1]]
     
     true_label_mask=[1 if (x-target[i])==0 else 0 for i,x in enumerate(y_pred)]

@@ -1,34 +1,35 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
-
-# !mkdir datasets misc transformers-models
-
-
-# In[ ]:
+# In[2]:
 
 
 # !aws s3 cp s3://app-id-105879-dep-id-105006-uu-id-owjkztywmzkt/smarsh-emails/combined/preprocessed/model_training/splits  ./datasets \
 # --recursive --exclude "*" --include "*.csv" --exclude "*/*"
 
 
-# In[ ]:
+# In[3]:
 
 
 # !aws s3 cp s3://app-id-105879-dep-id-105006-uu-id-owjkztywmzkt/R680994/notebooks/complaints_larger_instance/data/  ./misc/data/  \
 # --recursive --exclude "*" --include "*.csv" --include "*.csv.zip" --exclude "*/*"
 
 
+# In[1]:
+
+
+get_ipython().system('aws s3 cp s3://app-id-105879-dep-id-105006-uu-id-owjkztywmzkt/smarsh-emails/combined/preprocessed/model_training/splits/train.csv  ./datasets/')
+get_ipython().system('aws s3 cp s3://app-id-105879-dep-id-105006-uu-id-owjkztywmzkt/smarsh-emails/combined/preprocessed/model_training/splits/val.csv  ./datasets/')
+get_ipython().system('aws s3 cp s3://app-id-105879-dep-id-105006-uu-id-owjkztywmzkt/smarsh-emails/combined/preprocessed/model_training/splits/test.csv  ./datasets/')
+
+
 # In[ ]:
 
 
-# !aws s3 cp s3://app-id-105879-dep-id-105006-uu-id-owjkztywmzkt/R680994/notebooks/complaints_larger_instance/  ./misc/  \
-# --recursive --exclude "*" --include "*.ipynb" --include "*.py" --exclude "*/*"
 
 
-# In[16]:
+
+# In[34]:
 
 
 import argparse
@@ -95,6 +96,28 @@ train_df.head()
 # In[4]:
 
 
+train_df["front office"].value_counts(dropna=False)
+
+
+# In[5]:
+
+
+# plt.rcParams["figure.figsize"] = [10, 5]
+# plt.rcParams["figure.autolayout"] = True
+# ax = sns.barplot(data = train_df, x='service',y='is_complaint')
+# ax.set_title(" termination word existing in email")
+# plt.legend(loc="best")
+
+
+# In[ ]:
+
+
+
+
+
+# In[28]:
+
+
 hf_train=Dataset.from_pandas(train_df)
 hf_val=Dataset.from_pandas(val_df)
 hf_test=Dataset.from_pandas(test_df)
@@ -102,13 +125,13 @@ hf_test=Dataset.from_pandas(test_df)
 hf_data=DatasetDict({"train":hf_train, "val":hf_val,  "test":hf_test})
 
 
-# In[5]:
+# In[29]:
 
 
 hf_data
 
 
-# In[6]:
+# In[30]:
 
 
 def label_distribution(df):
@@ -117,65 +140,78 @@ def label_distribution(df):
     return tempt1.merge(tempt2, on="is_complaint", how="inner")
 
 def style_format(df,  data_type="Training set"):
-    return df.style.format({'count':'{:,}','percentage':'{:.2%}'})\
-           .set_caption(f"{data_type} label distribution")\
-           .set_table_styles([{'selector': 'caption','props': [('color', 'red'),('font-size', '15px')]}])
+    return df.style.format({'count':'{:,}','percentage':'{:.2%}'})           .set_caption(f"{data_type} label distribution")           .set_table_styles([{'selector': 'caption','props': [('color', 'red'),('font-size', '15px')]}])
 
 
-# In[7]:
+# In[31]:
 
 
 label_train=label_distribution(train_df)
 style_format(label_train,  data_type="Training set")
 
 
-# In[8]:
+# In[32]:
 
 
 label_val=label_distribution(val_df)
 style_format(label_val,  data_type="validation set")
 
 
-# In[10]:
+# In[33]:
 
 
 label_test=label_distribution(test_df)
 style_format(label_test,  data_type="Test set")
 
 
-# In[9]:
+# In[ ]:
 
 
-model_checkpoint=os.path.join(os.getcwd(), "transformers-models","roberta-base")
+0    precision : 100%,    Recall: 76%
+1    precision : 0.98% ,  recall: 85%
+2                0.3%     recall: 
+
+
+# In[13]:
+
+
+model_checkpoint=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","roberta-base")
 tokenizer=AutoTokenizer.from_pretrained(model_checkpoint)
 
 
-# In[11]:
+# In[15]:
 
 
-### run the following codes in .py file because the progressive bar is not shown correctly in notebook
-
-# train_df1=Dataset.from_pandas(train_df)
-# train_df1=train_df1.map(lambda x: tokenizer(x["preprocessed_email"]),batched=True)
-
-# val_df1=Dataset.from_pandas(val_df)
-# val_df1=val_df1.map(lambda x: tokenizer(x["preprocessed_email"]),batched=True)
-
-# test_df1=Dataset.from_pandas(test_df)
-# test_df1=test_df1.map(lambda x: tokenizer(x["preprocessed_email"]),batched=True)
-
-# def compute_lenth(example):
-#     return {"text_length":len(example["input_ids"])}
-# train_df1=train_df1.map(compute_lenth)
-# val_df1=val_df1.map(compute_lenth)
-# test_df1=test_df1.map(compute_lenth)
-
-# train_df1.save_to_disk('train_df')
-# val_df1.save_to_disk('val_df')
-# test_df1.save_to_disk('test_df')
+train_df['preprocessed_email'] = train_df['preprocessed_email'].astype(str)
+val_df['preprocessed_email'] = val_df['preprocessed_email'].astype(str)
+test_df['preprocessed_email'] = test_df['preprocessed_email'].astype(str)
 
 
-# In[17]:
+# In[16]:
+
+
+train_df1=Dataset.from_pandas(train_df)
+train_df1=train_df1.map(lambda x: tokenizer(x["preprocessed_email"]),batched=True)
+
+val_df1=Dataset.from_pandas(val_df)
+val_df1=val_df1.map(lambda x: tokenizer(x["preprocessed_email"]),batched=True)
+
+test_df1=Dataset.from_pandas(test_df)
+test_df1=test_df1.map(lambda x: tokenizer(x["preprocessed_email"]),batched=True)
+
+def compute_lenth(example):
+    return {"text_length":len(example["input_ids"])}
+train_df1=train_df1.map(compute_lenth)
+val_df1=val_df1.map(compute_lenth)
+test_df1=test_df1.map(compute_lenth)
+
+data_dir=os.path.join("/opt/omniai/work/instance1/jupyter/","email-complaints","datasets")
+train_df1.save_to_disk(os.path.join(data_dir,"train_df"))
+val_df1.save_to_disk(os.path.join(data_dir,'val_df'))
+test_df1.save_to_disk(os.path.join(data_dir,'test_df'))
+
+
+# In[20]:
 
 
 def statistics_compute(hf_df1,hf_df2,hf_df3,p=1):
@@ -223,7 +259,7 @@ def style_format(token_count_df,  textbody="preprocessed_email"):
     }])
 
 
-# In[19]:
+# In[35]:
 
 
 data_dir=os.path.join("/opt/omniai/work/instance1/jupyter/","email-complaints","datasets")
@@ -232,14 +268,132 @@ val_df1=load_from_disk(os.path.join(data_dir,"val_df"))
 test_df1=load_from_disk(os.path.join(data_dir,"test_df"))
 
 
-# In[4]:
+# In[36]:
+
+
+def convert_hf_pandas(df):
+    df.set_format(type="pandas")
+    data=df[:]
+    return data
+
+train_data=convert_hf_pandas(train_df1)
+val_data=convert_hf_pandas(val_df1)
+test_data=convert_hf_pandas(test_df1)
+
+train_data["data_type"]=["training_set"]*len(train_data)
+val_data["data_type"]=["validation_set"]*len(val_data)
+test_data["data_type"]=["test_set"]*len(test_data)
+all_data=pd.concat([train_data,val_data,test_data],axis=0)
+
+
+# In[37]:
+
+
+all_data["is_complaint"]=all_data["is_complaint"].progress_apply(lambda x: 1 if x=="Y" else 0)
+
+plt.rcParams["figure.figsize"] = [10, 5]
+plt.rcParams["figure.autolayout"] = True
+ax = sns.barplot(data = all_data, x='service',y='is_complaint',hue="data_type")
+ax.set_title("sevice vs non-service email")
+plt.legend(loc="best")
+
+
+# In[13]:
+
+
+plt.rcParams["figure.figsize"] = [10, 5]
+plt.rcParams["figure.autolayout"] = True
+ax = sns.barplot(data = all_data, x='front office',y='is_complaint',hue="data_type")
+ax.set_title("front office vs non-front office email")
+plt.legend(loc="best")
+
+
+# In[38]:
+
+
+def pcut_func(df,var,nbin=5):
+    df[var]=df[var].astype(float)
+    df["cut"]=pd.qcut(df[var],nbin,precision=2,duplicates="drop")
+    decile=df.groupby(df["cut"])['target'].mean().reset_index()
+    decile["cut"]=decile["cut"].astype(str)
+    return decile
+
+# def myplot(df,var,*args):
+
+#     fig, a = plt.subplots(len(args)//2,2,figsize=(12,2.5*len(args)))
+#     a=a.ravel()
+#     for idx,ax in enumerate(a):
+#         df=args[idx]
+#         ax.plot(df["cut"],df["churn"],color="r",marker="*",linewidth=2, markersize=12)
+#         ax.set_title(var[idx])
+#         ax.tick_params(labelrotation=45)
+#     fig.tight_layout()
+    
+# variable_list=["text_length","issue_counts","duration","negative_word_counts"]
+# nbin=5
+# args=[]
+# for idx,v in enumerate(variable_list):
+#     x=pcut_func(train_df,var=variable_list[idx],nbin=nbin)
+#     args.append(x)
+# myplot(train_df,variable_list,*args)
+
+
+# In[39]:
+
+
+fig, ax = plt.subplots(1,3,figsize=(12,4))
+plt.subplot(1,3,1)
+df=pcut_func(train_data,var="text_length",nbin=10)
+ax[0].plot(df["cut"],df["target"],color="r",marker="*",linewidth=2, markersize=12)
+ax[0].set_title("text_length\n(training set)")
+ax[0].tick_params(labelrotation=45)
+plt.subplot(1,3,2)
+df=pcut_func(val_data,var="text_length",nbin=10)
+ax[1].plot(df["cut"],df["target"],color="r",marker="*",linewidth=2, markersize=12)
+ax[1].set_title("text_length\n(validation set)")
+ax[1].tick_params(labelrotation=45)
+plt.subplot(1,3,3)
+df=pcut_func(test_data,var="text_length",nbin=10)
+ax[2].plot(df["cut"],df["target"],color="r",marker="*",linewidth=2, markersize=12)
+ax[2].set_title("text_length\n(test set)")
+ax[2].tick_params(labelrotation=45)
+
+fig.tight_layout()
+
+
+# In[ ]:
+
+
+fig, a = plt.subplots(1,3,figsize=(12,2.5*len(args)))
+a=a.ravel()
+for idx,ax in enumerate(a):
+    df=args[idx]
+    ax.plot(df["cut"],df["churn"],color="r",marker="*",linewidth=2, markersize=12)
+    ax.set_title(var[idx])
+    ax.tick_params(labelrotation=45)
+fig.tight_layout()
+
+
+# In[17]:
+
+
+train_data.head(2)
+
+
+# In[ ]:
+
+
+
+
+
+# In[22]:
 
 
 token_count_df=statistics_table(train_df1,val_df1,test_df1)
 style_format(token_count_df,  textbody="preprocessed_email")
 
 
-# In[7]:
+# In[23]:
 
 
 train_df1.set_format("pandas")
@@ -273,7 +427,7 @@ ax3.set(xlim=(0, 20000))
 plt.show()
 
 
-# In[8]:
+# In[24]:
 
 
 fig,(ax1,ax2)=plt.subplots(1,2, figsize=(25,6))
@@ -288,15 +442,17 @@ ax2.set_ylabel("# of token")
 plt.show()
 
 
-# In[13]:
+# In[28]:
 
 
-test_df=load_from_disk("./test_df")
+data_dir=os.path.join("/opt/omniai/work/instance1/jupyter/","email-complaints","datasets")
+
+test_df=load_from_disk((os.path.join(data_dir,"test_df")))
 test_df.set_format("pandas")
 test_df=test_df[:]
 
 
-# In[15]:
+# In[31]:
 
 
 import textwrap
@@ -323,19 +479,14 @@ for i in range(10):
     print('')
 
 
-# In[ ]:
+# In[32]:
 
 
+df_test_v1=test_df[(test_df.is_complaint=="Y") & (test_df.text_length<=200)]
+df_test_v1.head(2)
 
 
-
-# In[ ]:
-
-
-
-
-
-# In[41]:
+# In[33]:
 
 
 import textwrap
@@ -346,7 +497,7 @@ df_test_v1=test_df[(test_df.is_complaint=="Y") & (test_df.text_length<=200)]
 # Wrap text to 80 characters.
 wrapper = textwrap.TextWrapper(width=150) 
 
-exam_text = df_test_v1["preprocessed_email"]
+exam_text = df_test_v1.loc[:,["snapshot_id","preprocessed_email"]]
 
 # Randomly choose some examples.
 for i in range(10):
@@ -358,7 +509,9 @@ for i in range(10):
     print('*********  preprocessed_email ********')
     print("*"*50)
     print('')
-    print(wrapper.fill(exam_text[j]))
+    print(exam_text.loc[j,"snapshot_id"])
+    print()
+    print(wrapper.fill(exam_text.loc[j,"preprocessed_email"]))
     print('')
 
 
@@ -368,90 +521,33 @@ for i in range(10):
 
 
 
-# In[ ]:
+# In[39]:
 
 
+import textwrap
+import random
 
+df_test_v1=test_df[(test_df.is_complaint=="Y") & (test_df.text_length<=300)]
 
+# Wrap text to 80 characters.
+wrapper = textwrap.TextWrapper(width=150) 
 
-# In[ ]:
+exam_text = df_test_v1.loc[:,["snapshot_id","preprocessed_email"]]
 
-
-
-
-
-# In[3]:
-
-
-text="""
-Now Redi-Bag is blank, see below. Nothing personal but I am getting really frustrated at Chase's inability to fix this. Subject: RE: Transfer
-Complete- Redi Bag Inc Good Morning Sebastien, I am sorry that it didn't work. I reached out to support and we were able to turn it on from our end
-this morning. Can you try again to confirm? Again, my apologies for the back and forth, but hopefully this fixes the problem. Let me know. Subject:
-RE: Transfer Complete- Redi Bag Inc Hello Derrick, Unfortunately this is still not working. See below print screen. Subject: RE: Transfer Complete-
-Redi Bag Inc Hey Sebastien, No problem, it was a pleasure working with you. I hope you had a great vacation. Were you able to see if positive pay is
-working now? Subject: RE: Transfer Complete- Redi Bag Inc Thank you for all your help throughout that process Derrick. Sebastien Subject: Transfer
-Complete- Redi Bag Inc Hello Sebastien , We welcome you to the Commercial Bank. Thank you for your time throughout this transfer process. We have
-completed all required tasks for your transfer into Commercial Bank for Redi Bag Inc and related approved entities. Your dedicated relationship team
-is listed below. For any service questions, please reach out to your Client Service contact. If you have previously used any Chase Branches to
-initiate any of your transactions, please discontinue doing this and use your Connect Services going forward. Mark Long Banker  Olivia Mcleod-Smith
-Treasury Management Officer  Chase Illinois Service Team/Tamara Gray Client Service Professional  Chase Connect Support Team Ph: 1-877-226-0071 For
-Chase Connect you can access the Go to guides page - modern resource guides and short videos to acclimate you to the main features of Chase Connect.
-For information on Chase Connect Fraud Protection Services (Positive Pay, Reverse Positive Pay, ACH Debit Block), please visit the following link here
-It's been a pleasure working with you throughout this process. As a firm, we use feedback to drive continuous improvement. You may receive a brief
-survey about your implementation experience. We'd appreciate your thoughts on what went well and how we can further improve the process. Should you
-have any questions, please do not hesitate to reach out. We aim to exceed your expectations. Tell us how we are doing @ better together.
-"""
-
-
-# In[2]:
-
-
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import os
-model_checkpoint=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","longformer-large-4096")
-
-tokenizer=AutoTokenizer.from_pretrained(model_checkpoint)
-model=AutoModelForSequenceClassification.from_pretrained(model_checkpoint)
-
-
-# In[4]:
-
-
-import torch
-inputs = tokenizer(text, return_tensors="pt")
-with torch.no_grad():
-    logits = model(**inputs).logits
-
-
-# In[5]:
-
-
-logits
-
-
-# In[6]:
-
-
-predicted_class_id = logits.argmax().item()
-model.config.id2label[predicted_class_id]
-
-
-# In[12]:
-
-
-inputs = tokenizer("It is awful to see this great movie is over", return_tensors="pt")
-with torch.no_grad():
-    logits = model(**inputs).logits
-logits
-
-
-# In[11]:
-
-
-inputs = tokenizer("It is great to see this awful movie is over", return_tensors="pt")
-with torch.no_grad():
-    logits = model(**inputs).logits
-logits
+# Randomly choose some examples.
+for i in range(10):
+    random.seed(103+i)
+    j = random.choice(exam_text.index)
+    
+    print('')
+    print("*"*50)
+    print('*********  preprocessed_email ********')
+    print("*"*50)
+    print('')
+    print(exam_text.loc[j,"snapshot_id"])
+    print()
+    print(wrapper.fill(exam_text.loc[j,"preprocessed_email"]))
+    print('')
 
 
 # In[ ]:

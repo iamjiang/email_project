@@ -4,6 +4,7 @@ import pandas as pd
 from tqdm.notebook import tqdm
 tqdm.pandas()
 
+import torch
 from torch.utils.data import Dataset, DataLoader
 import datasets
 from datasets import load_dataset, load_metric, concatenate_datasets,DatasetDict
@@ -25,10 +26,18 @@ def prompt_wrapper(text, prompt, tokenizer):
     df=df[df['preprocessed_email']!="nan"]
     
     if len(prompt)==1:
-        indexed_prompt=tokenizer(prompt[0], return_tensors="pt",add_special_tokens=False).input_ids
-        remaining=tokenizer.model_max_length-indexed_prompt.shape[1]-2
-        df["new_input_ids"]=df["input_ids"].progress_apply(lambda x: np.concatenate([x[:remaining],indexed_prompt.squeeze()]))
-        df["wrapped_email"]=df["new_input_ids"].progress_apply(lambda x: tokenizer.decode(x))
+        def decode_tokens_func(example):
+            indexed_prompt=tokenizer(prompt[0], add_special_tokens=False).input_ids
+            remaining=tokenizer.model_max_length-len(indexed_prompt)-2-1 # 2 for special token, 1 for addtional space between the last token and prompt
+            decoded_x0=tokenizer.decode(example[:remaining], skip_special_tokens=True)
+            decoded_x1=tokenizer.decode(indexed_prompt, skip_special_tokens=False)
+            result=decoded_x0+". "+decoded_x1
+            # result=decoded_x0+"."+decoded_x1.replace("<mask>"," <mask>")
+            new_input_ids=tokenizer(result,add_special_tokens=False).input_ids
+            return new_input_ids
+        df["new_input_ids"]=df["input_ids"].progress_apply(decode_tokens_func)
+        df["wrapped_email"]=df["new_input_ids"].progress_apply(lambda x: tokenizer.decode(x,skip_special_tokens=False))
+
     elif len(prompt)>1:
         indexed_prompt_v1=tokenizer(prompt[0], return_tensors="pt",add_special_tokens=False).input_ids
         indexed_prompt_v2=tokenizer(prompt[1], return_tensors="pt",add_special_tokens=False).input_ids
@@ -40,7 +49,7 @@ def prompt_wrapper(text, prompt, tokenizer):
     
     wrapped_text=datasets.Dataset.from_pandas(df)
     
-    wrapped_text=wrapped_text.select_columns(['wrapped_email','target'])
+    wrapped_text=wrapped_text.select_columns(['snapshot_id','preprocessed_email','wrapped_email','is_complaint','target'])
     
     return wrapped_text
         
