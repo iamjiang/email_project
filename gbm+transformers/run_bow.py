@@ -26,7 +26,7 @@ nltk_data_dir=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-
 stopwords_file = open(nltk_data_dir + '/corpora/stopwords/english')
 stopwords_list = stopwords_file.readlines()
 nltk.data.path.append(nltk_data_dir)
-# # Filter out the stopwords from the sentence
+# Filter out the stopwords from the sentence
 # filtered_words = [word for word in words if word.lower() not in stopwords_list]
 
 from gensim.parsing.preprocessing import remove_stopwords

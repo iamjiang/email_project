@@ -50,10 +50,54 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
 
+def text_preprocess(text, extract_adj=False):
+    # lemma = nltk.wordnet.WordNetLemmatizer()
+    text = str(text)
+    #remove http links from the email
+    link_regex    = re.compile('((https?):((//)|(\\\\))+([\w\d:#@%/;$()~_?\+-=\\\.&](#!)?)*)', re.DOTALL)
+    links         = re.findall(link_regex, text)
+    for link in links:
+        text = text.replace(link[0], '')  
+    text = re.sub("`", "'", text)
+    if extract_adj:
+        ADJ_word=[]
+        doc=nlp(text)
+        for token in doc:
+            if token.pos_=="ADJ":
+                ADJ_word.append(token.text)   
+        text=" ".join(ADJ_word)    
+    ### Remove stop word
+    text = [word for word in word_tokenize(text) if word.lower() not in STOPWORDS]
+    text = " ".join(text)
+    
+    # remove special characters and digits
+    text=re.sub("(\\d|\\W)+"," ",text)
+    
+    #Remove punctuation
+    table = str.maketrans('', '', string.punctuation)
+    text = [w.translate(table) for w in text.split()]
+    text=" ".join(text)
+    return text    
+
 if __name__=="__main__":
-    df_train=pd.read_pickle(os.path.join(os.getcwd(),"df_train"))
-    df_val=pd.read_pickle(os.path.join(os.getcwd(),"df_val"))
-    df_test=pd.read_pickle(os.path.join(os.getcwd(),"df_test"))
+    # df_train=pd.read_pickle(os.path.join(os.getcwd(),"df_train"))
+    # df_val=pd.read_pickle(os.path.join(os.getcwd(),"df_val"))
+    # df_test=pd.read_pickle(os.path.join(os.getcwd(),"df_test"))
+    
+    data_path=os.path.join("/opt/omniai/work/instance1/jupyter/", "email-complaints","datasets")
+    train_val_test=pd.read_pickle(os.path.join(data_path,"train_val_test_pickle"))
+    train_val_test.loc[:,'target']=train_val_test.loc[:,'is_complaint'].progress_apply(lambda x: 1 if x=="Y" else 0) 
+    train_val_test.loc[:,"text_length"]=train_val_test.loc[:,"preprocessed_email"].progress_apply(lambda x: len(x.split()))
+    
+    train_val_test["bag_of_word"]=train_val_test["preprocessed_email"].progress_apply(text_preprocess)
+    words = set(nltk.corpus.words.words())
+
+    train_val_test["bag_of_word"] = train_val_test["bag_of_word"]\
+    .progress_apply(lambda x: " ".join(w for w in nltk.wordpunct_tokenize(x) if w.lower() in words ))   
+    
+    df_train=train_val_test[train_val_test["data_type"]=="training_set"].drop(["data_type"],axis=1)
+    df_val=train_val_test[train_val_test["data_type"]=="validation_set"].drop(["data_type"],axis=1)
+    df_test=train_val_test[train_val_test["data_type"]=="test_set"].drop(["data_type"],axis=1)
     
     negative_word=[]
     with open("negative-words.txt") as f:
