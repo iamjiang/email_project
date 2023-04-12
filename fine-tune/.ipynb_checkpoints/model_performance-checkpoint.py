@@ -123,6 +123,59 @@ style_format(metric_test,  type="test set")
 
 # In[ ]:
 
+######## draw confusion matrix #########
+
+def read_output(file_name):
+    with open(file_name,"r") as file:
+        true_y=[]
+        pred_y=[]
+        prob_y=[]
+        for line in file:
+            x,y,z=line.strip().split(',')
+            true_y.append(int(x))
+            pred_y.append(int(y))
+            prob_y.append(float(z))
+    return true_y, pred_y, prob_y
+
+output_dir=os.path.join('/opt/omniai/work/instance1/jupyter/email-complaints/lightgbm+transformers', "tfidf+structure")
+
+file_name=os.path.join(output_dir,"xgboost_y_true_pred.txt")
+xgboost_true_y, xgboost_pred_y, _ =read_output(file_name)
+
+file_name=os.path.join(output_dir,"lightgbm_y_true_pred.txt")
+lightgbm_true_y, lightgbm_pred_y, _ =read_output(file_name)
+
+file_name=os.path.join(output_dir,"catboost_y_true_pred.txt")
+catboost_true_y, catboost_pred_y, _ =read_output(file_name)
+
+file_name=os.path.join(output_dir,"randomforest_y_true_pred.txt")
+randomforest_true_y, randomforest_pred_y, _ =read_output(file_name)
 
 
+model_name="roberta-large"
+output_dir=model_name.split("-")[0] + "_" + model_name.split("-")[1] + "_repo"
+output_dir=os.path.join(os.getcwd(),output_dir)
+file_name=os.path.join(output_dir,"y_true_pred.txt")
+roberta_true_y, roberta_pred_y, _ =read_output(file_name)
 
+
+model_name="longformer-large"
+output_dir=model_name.split("-")[0] + "_" + model_name.split("-")[1] + "_repo"
+output_dir=os.path.join(os.getcwd(),output_dir)
+file_name=os.path.join(output_dir,"y_true_pred.txt")
+longformer_true_y, longformer_pred_y, _ =read_output(file_name)
+
+confusion_matrix = metrics.confusion_matrix(xgboost_true_y, xgboost_pred_y)
+cm_display = metrics.ConfusionMatrixDisplay(confusion_matrix = confusion_matrix, display_labels = [False, True])
+
+cm_display.plot(values_format=',')
+plt.title("xgboost Model")
+plt.show()
+
+confusion_matrix = metrics.confusion_matrix(lightgbm_true_y, lightgbm_pred_y)
+
+cm_display = metrics.ConfusionMatrixDisplay(confusion_matrix = confusion_matrix, display_labels = [False, True])
+
+cm_display.plot(values_format=',')
+plt.title("lightgbm Model")
+plt.show()
