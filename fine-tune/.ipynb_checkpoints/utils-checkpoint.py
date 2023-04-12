@@ -296,7 +296,7 @@ def model_evaluate(target, y_pred):
     
     return {
         "total positive":sum(target),
-        "false positive":false_prediction,
+        "false positive":false_positive,
         "false_negative":false_negative,
         "precision":prec, 
         "recall":rec, 

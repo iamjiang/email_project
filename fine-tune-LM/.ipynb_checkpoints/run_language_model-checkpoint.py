@@ -5,6 +5,9 @@ import math
 import copy
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
+# from tqdm.auto import tqdm
+tqdm.pandas(position=0,leave=0)
 import time
 import datetime
 import shutil
@@ -32,7 +35,6 @@ from torch.optim import AdamW
 
 import random
 import collections
-from tqdm.auto import tqdm
 
 from IPython.display import display, HTML
 
@@ -302,6 +304,9 @@ def main(args,dataset):
         else:
             output_dir=os.path.join(os.getcwd(),args.output_dir)
             
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
         if accelerator.is_main_process:
             with open(os.path.join(output_dir,"Perplexity.txt"),'a') as f:
                 f.write(f'{epoch},{train_perplexity},{val_perplexity}\n')
@@ -365,8 +370,17 @@ if __name__=="__main__":
 
     print(args)
     
-    data_path=os.path.join("/opt/omniai/work/instance1/jupyter/", "email-complaints","few-shot")
-    hf_data=load_from_disk(os.path.join(data_path,"hf_data"))
+    # data_path=os.path.join("/opt/omniai/work/instance1/jupyter/", "email-complaints","few-shot")
+    # hf_data=load_from_disk(os.path.join(data_path,"hf_data"))
+    # hf_data=hf_data.select_columns(['snapshot_id', 'preprocessed_email','is_complaint','target'])
+    
+    data_path=os.path.join("/opt/omniai/work/instance1/jupyter/", "email-complaints","datasets")
+    train_val_test=pd.read_pickle(os.path.join(data_path,"train_val_test_pickle"))
+    train_val_test.loc[:,'target']=train_val_test.loc[:,'is_complaint'].progress_apply(lambda x: 1 if x=="Y" else 0)
+    train_df=datasets.Dataset.from_pandas(train_val_test[train_val_test["data_type"]=="training_set"])
+    val_df=datasets.Dataset.from_pandas(train_val_test[train_val_test["data_type"]=="validation_set"])
+    test_df=datasets.Dataset.from_pandas(train_val_test[train_val_test["data_type"]=="test_set"])
+    hf_data=DatasetDict({"train":train_df, "validation":val_df, "test":test_df})
     hf_data=hf_data.select_columns(['snapshot_id', 'preprocessed_email','is_complaint','target'])
     
     train_df=hf_data["train"]
@@ -396,8 +410,10 @@ if __name__=="__main__":
     if args.val_undersampling:
         val_df=sampling_func(hf_data["validation"],"target",args.val_negative_positive_ratio,args.seed)
     if args.test_undersampling:
-        test_df=sampling_func(hf_data["test"],"target",args.test_negative_positive_ratio,args.seed)
-    
+        # test_df=sampling_func(hf_data["test"],"target",args.test_negative_positive_ratio,args.seed)
+        positive_sample=test_df.filter(lambda x: x['target']==1)
+        test_df=hf_data['test'].shuffle(seed=args.seed).select(range(len(positive_sample)*(1+args.test_negative_positive_ratio)))
+
     if args.train_undersampling or args.val_undersampling or args.test_undersampling:
         all_text=DatasetDict({"train":train_df, "validation":val_df, "test":test_df})
     
