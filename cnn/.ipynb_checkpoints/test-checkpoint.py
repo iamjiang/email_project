@@ -130,7 +130,7 @@ if __name__=="__main__":
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument("--train_set", type=str, default="./datasets/train_df.csv")
     parser.add_argument("--val_set", type=str, default="./datasets/val_df.csv")
-    parser.add_argument("--test_set", type=str, default="./datasets/val_df.csv")
+    parser.add_argument("--test_set", type=str, default="./datasets/test_df.csv")
     parser.add_argument("--word2vec_path", type=str, default="/opt/omniai/work/instance1/jupyter/transformers-models/glove/glove.6B.50d.txt")
     parser.add_argument("--pre_trained_model", type=str, default="trained_models/whole_model_cnn")
     parser.add_argument("--train_undersampling", action="store_true", help="undersampling or not")
