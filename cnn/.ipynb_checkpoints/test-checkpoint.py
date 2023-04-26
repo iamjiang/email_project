@@ -120,7 +120,7 @@ def main(args, device):
         writer.writeheader()
         for i, j, k in zip(test_target, y_pred, test_pred[:,1]):
             writer.writerow(
-                {'True label': i + 1, 'Predicted label': np.argmax(j) + 1, 'Predicted_prob': k})    
+                {'True label': i , 'Predicted label': j, 'Predicted_prob': k})    
 
     
 if __name__=="__main__":
