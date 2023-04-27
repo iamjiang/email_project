@@ -52,6 +52,7 @@ from accelerate import Accelerator
 
 import utils
 
+import bitsandbytes as bnb
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -80,10 +81,11 @@ def main(args,train_data, val_data, test_data, device):
     config=AutoConfig.from_pretrained(model_name)
     
     if args.model_name=="bigbird-roberta-large":
-        # config.block_size=32
-        # config.num_random_blocks=2
+        config.block_size=16
+        config.num_random_blocks=2
         config.attention_type="original_full"
-        tokenizer=AutoTokenizer.from_pretrained(model_name, model_max_length=1500)
+        # tokenizer=AutoTokenizer.from_pretrained(model_name, model_max_length=2048)
+        tokenizer=AutoTokenizer.from_pretrained(model_name, model_max_length=config.max_position_embeddings)
         model=AutoModelForSequenceClassification.from_pretrained(model_name,config=config)
     else:
         tokenizer=AutoTokenizer.from_pretrained(model_name, model_max_length=config.max_position_embeddings-2)
@@ -137,11 +139,11 @@ def main(args,train_data, val_data, test_data, device):
                                )
 
     test_dataloader=DataLoader(test_module,
-                               shuffle=False,
-                               batch_size=args.test_batch_size,
-                               collate_fn=test_module.collate_fn,
-                               pin_memory=True,
-                               # num_workers=4
+                                shuffle=False,
+                                batch_size=args.test_batch_size,
+                                collate_fn=test_module.collate_fn,
+                                pin_memory=True,
+                                # num_workers=4
                                )
 
     # %pdb
@@ -177,7 +179,8 @@ def main(args,train_data, val_data, test_data, device):
                 },
             ]
 
-    optimizer = AdamW(optimizer_grouped_parameters, lr=args.lr, eps=args.adam_epsilon)
+    # optimizer = AdamW(optimizer_grouped_parameters, lr=args.lr, eps=args.adam_epsilon)
+    optimizer = bnb.optim.Adam8bit(optimizer_grouped_parameters, lr=args.lr, eps=args.adam_epsilon)
     # optimizer=AdamW(model.parameters(),lr=args.lr)
     #     lr_scheduler =get_linear_schedule_with_warmup(optimizer, 
     #                                                   num_warmup_steps=warmup_steps, 
@@ -199,9 +202,8 @@ def main(args,train_data, val_data, test_data, device):
 #     model, optimizer, train_dataloader, valid_dataloader, test_dataloader = accelerator.prepare(
 #         model, optimizer, train_dataloader, valid_dataloader, test_dataloader
 #     )
-
     if args.gradient_checkpointing:
-        model.gradient_checkpointing_enable() 
+        model.gradient_checkpointing_enable()
         
     model, optimizer, train_dataloader, test_dataloader = accelerator.prepare(
         model, optimizer, train_dataloader, test_dataloader
@@ -309,15 +311,14 @@ def main(args,train_data, val_data, test_data, device):
         with open(os.path.join(output_dir,"metrics_test.txt"),'a') as f:
             f.write(f'{args.model_name},{test_output["total positive"]},{test_output["false positive"]},{test_output["false_negative"]}, \
             {test_output["precision"]},{test_output["recall"]},{test_output["f1_score"]},{test_output["AUC"]},{test_output["pr_auc"]},{best_threshold}\n')  
-
-        fieldnames = ['True label', 'Predicted label', 'Predicted_prob']
-        with open(os.path.join(output_dir,"predictions.csv"),'w') as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=fieldnames, quoting=csv.QUOTE_NONNUMERIC)
-            writer.writeheader()
-            for i, j, k in zip(test_target, y_pred, test_pred[:,1]):
-                writer.writerow(
-                    {'True label': i, 'Predicted label': j, 'Predicted_prob': k})     
-                
+    fieldnames = ['True label', 'Predicted label', 'Predicted_prob']
+    with open(os.path.join(output_dir,"predictions.csv"),'w') as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames, quoting=csv.QUOTE_NONNUMERIC)
+        writer.writeheader()
+        for i, j, k in zip(test_target, y_pred, test_pred[:,1]):
+            writer.writerow(
+                {'True label': i, 'Predicted label': j, 'Predicted_prob': k}) 
+            
         # with open(os.path.join(output_dir,"y_true_pred.txt"),'w') as f:
         #     for x,y,z in zip(test_target.tolist(),y_pred,test_pred[:,1].tolist()):
         #         f.write(str(x)+","+str(y)+","+str(z)+ '\n')
@@ -386,7 +387,9 @@ if __name__=="__main__":
     parser.add_argument("--es_patience", type=int, default=3,
                             help="Early stopping's parameter: number of epochs with no improvement after which training will be stopped. \
                             Set to 0 to disable this technique.")
+    
     parser.add_argument("--val_min_recall", default=0.95, type=float, help="minimal recall for valiation dataset")
+    
     args= parser.parse_args()
 
     if args.customized_model:

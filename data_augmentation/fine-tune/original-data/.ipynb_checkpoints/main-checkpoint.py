@@ -123,26 +123,25 @@ def main(args,train_data, val_data, test_data, device):
                                 shuffle=True,
                                 batch_size=args.train_batch_size,
                                 collate_fn=train_module.collate_fn,
-                                drop_last=False   # longformer model bug
+                                drop_last=False,
+                                pin_memory=True,
+                                # num_workers=4
                                )
-    
-#     train_dataloader=DataLoader(train_module,
-#                                 sampler=train_sampler,
-#                                 batch_size=args.train_batch_size,
-#                                 collate_fn=train_module.collate_fn,
-#                                 drop_last=True   # longformer model bug
-#                                )
 
     valid_dataloader=DataLoader(val_module,
                                 shuffle=False,
                                 batch_size=args.test_batch_size,
-                                collate_fn=train_module.collate_fn
+                                collate_fn=train_module.collate_fn,
+                                pin_memory=True,
+                                # num_workers=4
                                )
 
     test_dataloader=DataLoader(test_module,
-                                shuffle=False,
-                                batch_size=args.test_batch_size,
-                                collate_fn=test_module.collate_fn
+                               shuffle=False,
+                               batch_size=args.test_batch_size,
+                               collate_fn=test_module.collate_fn,
+                               pin_memory=True,
+                               # num_workers=4
                                )
 
     # %pdb
@@ -200,7 +199,10 @@ def main(args,train_data, val_data, test_data, device):
 #     model, optimizer, train_dataloader, valid_dataloader, test_dataloader = accelerator.prepare(
 #         model, optimizer, train_dataloader, valid_dataloader, test_dataloader
 #     )
-    
+
+    if args.gradient_checkpointing:
+        model.gradient_checkpointing_enable() 
+        
     model, optimizer, train_dataloader, test_dataloader = accelerator.prepare(
         model, optimizer, train_dataloader, test_dataloader
     )
@@ -366,6 +368,7 @@ if __name__=="__main__":
     parser.add_argument('--num_epochs', type=int, default=10)
     parser.add_argument("--gradient_accumulation_steps",type=int,default=1,
                                help="Number of updates steps to accumulate before performing a backward/update pass.")
+    parser.add_argument('--gradient_checkpointing',  action="store_true")
     parser.add_argument('--lr', type=float, default=2e-5, help="learning rate")
     parser.add_argument('--lr_scheduler_type', type=str, default="linear")
     parser.add_argument('--customized_model',  action="store_true")

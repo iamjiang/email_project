@@ -11,8 +11,8 @@ python main.py --model_name bigbird-roberta-large \
 --loss_weight \
 --use_schedule \
 --train_undersampling \
---train_negative_positive_ratio 5 
-
-
+--train_negative_positive_ratio 5 \
+--val_min_recall 0.925 \
+--gradient_checkpointing
 
 
