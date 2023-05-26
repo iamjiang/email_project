@@ -55,67 +55,7 @@ def seed_everything(seed):
     np.random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
     
-class Loader_Creation(torch.utils.data.Dataset):
-    def __init__(self,
-                 dataset,
-                 tokenizer,
-                 feature_name
-                ):
-        super().__init__()
-        self.dataset=dataset
-        self.tokenizer=tokenizer
-        
-        self.dataset=self.dataset.map(lambda x:tokenizer(x[feature_name],truncation=True,padding="max_length"), 
-                                      batched=True)
-        self.dataset.set_format(type="pandas")
-        self.dataset=self.dataset[:]
-    
-    def __len__(self):
-        return self.dataset.shape[0]
-    
-    def __getitem__(self,index):
-        
-        _ids = self.dataset.loc[index]["input_ids"].squeeze()
-        _mask = self.dataset.loc[index]["attention_mask"].squeeze()
-        _target = self.dataset.loc[index]["target"].squeeze()
-        _snapshot_id=self.dataset.loc[index]["snapshot_id"].squeeze()
-        _thread_id=self.dataset.loc[index]["thread_id"].squeeze()
-        _is_feedback=self.dataset.loc[index]["is_feedback"].squeeze()
-        
-        return dict(
-            input_ids=_ids,
-            attention_mask=_mask,
-            labels=_target,
-            snapshot_id=_snapshot_id,
-            thread_id=_thread_id,
-            is_feedback=_is_feedback
-        )
-
-    
-    def collate_fn(self,batch):
-        input_ids=torch.stack([torch.tensor(x["input_ids"]) for x in batch])
-        attention_mask=torch.stack([torch.tensor(x["attention_mask"]) for x in batch])
-        labels=torch.stack([torch.tensor(x["labels"]) for x in batch])
-        snapshot_id=torch.stack([torch.tensor(x["snapshot_id"]) for x in batch])
-        thread_id=torch.stack([torch.tensor(x["thread_id"]) for x in batch])
-        is_feedback=torch.stack([torch.tensor(x["is_feedback"]) for x in batch])
-        
-        pad_token_id=self.tokenizer.pad_token_id
-        keep_mask = input_ids.ne(pad_token_id).any(dim=0)
-        
-        input_ids=input_ids[:, keep_mask]
-        attention_mask=attention_mask[:, keep_mask]
-        
-        return dict(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=labels,
-            snapshot_id=snapshot_id,
-            thread_id=thread_id,
-            is_feedback=is_feedback
-        )
-    
-def main(args, val_data, test_data, test_snapshot_map, test_thread_map, device):
+def main(args, val_data, test_data, device):
 
     val_df=Dataset.from_pandas(val_data)
     test_df=Dataset.from_pandas(test_data)
@@ -123,10 +63,16 @@ def main(args, val_data, test_data, test_snapshot_map, test_thread_map, device):
 
     if args.customized_model:   
         model_path=args.model_name.split("-")[0]+"_"+args.model_name.split("-")[1]+"_"+"customized"
-        model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "v2_new_email/Fine-Tuning", "results",model_path)
+        if args.deduped:
+            model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "new-email-project/Fine-Tuning","dedup",model_path)
+        else:
+            model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "new-email-project/Fine-Tuning",model_path)
     else:
         model_path=args.model_name.split("-")[0]+"_"+args.model_name.split("-")[1]
-        model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "v2_new_email/Fine-Tuning", "results",model_path)
+        if args.deduped:
+            model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "new-email-project/Fine-Tuning","dedup",model_path)
+        else:
+            model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "new-email-project/Fine-Tuning",model_path)
             
     config=AutoConfig.from_pretrained(model_name)
     if args.model_name=="bigbird-roberta-large":
@@ -146,14 +92,14 @@ def main(args, val_data, test_data, test_snapshot_map, test_thread_map, device):
     print(f"The # of parameters to be updated : {sum([p.nelement() for p in model.parameters() if p.requires_grad==True]):,}")
     print()
 
-    val_module=Loader_Creation(val_df, tokenizer,args.feature_name)
+    val_module=utils.Loader_Creation(val_df, tokenizer,args.feature_name)
     val_dataloader=DataLoader(val_module,
                               shuffle=False,
                               batch_size=args.batch_size,
                               collate_fn=val_module.collate_fn
                               )
     
-    test_module=Loader_Creation(test_df, tokenizer,args.feature_name)
+    test_module=utils.Loader_Creation(test_df, tokenizer,args.feature_name)
     test_dataloader=DataLoader(test_module,
                                 shuffle=False,
                                 batch_size=args.batch_size,
@@ -176,10 +122,6 @@ def main(args, val_data, test_data, test_snapshot_map, test_thread_map, device):
     
     def eval_func(data_loader,model,device,num_classes=2):
         
-        snapshot_id=[]
-        thread_id=[]
-        is_feedback=[]
-        
         fin_targets=[]
         fin_outputs=[]
         losses=[]
@@ -197,7 +139,7 @@ def main(args, val_data, test_data, test_snapshot_map, test_thread_map, device):
             else:
                 batch={k:v.type(torch.LongTensor).to(device[0]) for k,v in batch.items()}
                 
-            inputs={k:v  for k,v in batch.items() if k in ["input_ids","attention_mask"]}
+            inputs={k:v  for k,v in batch.items() if k!="labels"}
             with torch.no_grad():
                 outputs=model(**inputs)
             logits=outputs['logits']
@@ -207,20 +149,19 @@ def main(args, val_data, test_data, test_snapshot_map, test_thread_map, device):
             losses.append(loss.item())
 
             fin_targets.append(batch["labels"].cpu().detach().numpy())
-            fin_outputs.append(torch.softmax(logits.view(-1, num_classes),dim=1).cpu().detach().numpy())  
-            
-            snapshot_id.append(batch["snapshot_id"].cpu().detach().numpy())
-            thread_id.append(batch["thread_id"].cpu().detach().numpy())
-            is_feedback.append(batch["is_feedback"].cpu().detach().numpy())
+            fin_outputs.append(torch.softmax(logits.view(-1, num_classes),dim=1).cpu().detach().numpy())   
 
             batch_idx+=1
             
-        return np.concatenate(fin_outputs), np.concatenate(fin_targets), np.concatenate(snapshot_id) , np.concatenate(thread_id) , np.concatenate(is_feedback)
+        return np.concatenate(fin_outputs), np.concatenate(fin_targets), losses 
     
-    val_pred,val_target,_,_,_=eval_func(val_dataloader,model, device)
-    test_pred,test_target,test_snapshot_id,test_thread_id,test_feedback=eval_func(test_dataloader,model, device)
+    val_pred,val_target,val_losses=eval_func(val_dataloader,model, device)
+    test_pred,test_target,test_losses=eval_func(test_dataloader,model, device)
     
-    output_dir=os.path.join("/opt/omniai/work/instance1/jupyter/", "v2_new_email/Fine-Tuning","results",args.output_dir)
+    if args.deduped:
+        output_dir=os.path.join("/opt/omniai/work/instance1/jupyter/", "new-email-project/Fine-Tuning","dedup",args.output_dir)
+    else:
+        output_dir=os.path.join("/opt/omniai/work/instance1/jupyter/", "new-email-project/Fine-Tuning",args.output_dir)
     
     # with open(os.path.join(output_dir,"metrics_val.txt"),"r") as file:
     #     for line in file:
@@ -235,18 +176,14 @@ def main(args, val_data, test_data, test_snapshot_map, test_thread_map, device):
         f.write(f'{args.model_name},{test_output["total positive"]},{test_output["false positive"]},{test_output["false_negative"]}, \
         {test_output["precision"]},{test_output["recall"]},{test_output["f1_score"]},{test_output["AUC"]},{test_output["pr_auc"]},{best_threshold}\n')  
 
-    snapshot_inverse_map={v:k for k, v in test_snapshot_map.items()}
-    thread_inverse_map={v:k for k, v in test_thread_map.items()}
-
-    fieldnames = ['snapshot_id','thread_id','is_feedback','True_label', 'Predicted_label', 'Predicted_prob','best_threshold']
+    fieldnames = ['True label', 'Predicted label', 'Predicted_prob','best_threshold']
     file_name="predictions_"+str(args.val_min_recall).split(".")[-1]+".csv"
     with open(os.path.join(output_dir,file_name),'w') as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames, quoting=csv.QUOTE_NONNUMERIC)
         writer.writeheader()
-        for i, j, k, m, n, p, q in zip(test_snapshot_id, test_thread_id, test_feedback, test_target, y_pred, test_pred[:,1], [best_threshold]*len(y_pred)):
+        for i, j, k, p in zip(test_target, y_pred, test_pred[:,1],[best_threshold]*len(y_pred)):
             writer.writerow(
-                {'snapshot_id':snapshot_inverse_map[i],'thread_id':thread_inverse_map[j],'is_feedback':k, 'True_label': m, 
-                 'Predicted_label': n, 'Predicted_prob': p, 'best_threshold': q})  
+                {'True label': i, 'Predicted label': j, 'Predicted_prob': k, 'best_threshold': p})  
 
 
     print("==> performance on test set \n")
@@ -279,6 +216,7 @@ if __name__=="__main__":
     
     parser.add_argument('--customized_model',  action="store_true")
     parser.add_argument('--fp16',  action="store_true")
+    parser.add_argument('--deduped', action="store_true", help="keep most recent thread id or not")
     
     args= parser.parse_args()
 
@@ -293,7 +231,10 @@ if __name__=="__main__":
     print(args)
     print()
     
-    data_path=os.path.join("/opt/omniai/work/instance1/jupyter/", "v2_new_email","datasets","split_data")
+    if args.deduped:
+        data_path=os.path.join("/opt/omniai/work/instance1/jupyter/", "new-email-project","datasets","split_dedup_data")
+    else:
+        data_path=os.path.join("/opt/omniai/work/instance1/jupyter/", "new-email-project","datasets","split_data")
         
     data_name=[x for x in os.listdir(data_path) if x.split("_")[-2]=="pickle"]
     df=pd.DataFrame()
@@ -305,11 +246,10 @@ if __name__=="__main__":
     df['time'] = pd.to_datetime(df['time'])
     df.sort_values(by='time', inplace = True) 
     ## train: 09/2022 ~ 01/2023. validation: 02/2023  test: 03/2023
-    set_categories=lambda row: "train" if (row["year"] in [2022,2023] and row["month"] in [9,10,11,12,1,2]) \
-    else ("val" if (row["year"]==2023 and row["month"]==3) else "test")
+    set_categories=lambda row: "train" if (row["year"] in [2022,2023] and row["month"] in [9,10,11,12,1]) \
+    else ("val" if (row["year"]==2023 and row["month"]==2) else "test")
     df["data_type"]=df.progress_apply(set_categories,axis=1)
     df.loc[:,'target']=df.loc[:,'is_complaint'].progress_apply(lambda x: 1 if x=="Y" else 0)
-    df.loc[:,'is_feedback']=df.loc[:,'is_feedback'].progress_apply(lambda x: 1 if x=="Y" else 0)
 
     val_df=datasets.Dataset.from_pandas(df[df["data_type"]=="val"])
     test_df=datasets.Dataset.from_pandas(df[df["data_type"]=="test"])
@@ -333,21 +273,5 @@ if __name__=="__main__":
     test_data=test_data[:]
     # test_data=test_data.sample(500)
     
-    val_unique_snapshot=val_data["snapshot_id"].unique()
-    val_snapshot_map={v:idx for idx ,v in enumerate(val_unique_snapshot)}
-    val_unique_thread=val_data["thread_id"].unique()
-    val_thread_map={v:idx for idx ,v in enumerate(val_unique_thread)}
-
-    val_data["snapshot_id"]=list(map(val_snapshot_map.get,val_data["snapshot_id"]))
-    val_data["thread_id"]=list(map(val_thread_map.get,val_data["thread_id"]))
-
-    test_unique_snapshot=test_data["snapshot_id"].unique()
-    test_snapshot_map={v:idx for idx ,v in enumerate(test_unique_snapshot)}
-    test_unique_thread=test_data["thread_id"].unique()
-    test_thread_map={v:idx for idx ,v in enumerate(test_unique_thread)}
-
-    test_data["snapshot_id"]=list(map(test_snapshot_map.get,test_data["snapshot_id"]))
-    test_data["thread_id"]=list(map(test_thread_map.get,test_data["thread_id"]))
-    
-    main(args,val_data, test_data, test_snapshot_map, test_thread_map, device)
+    main(args,val_data, test_data, device)
     

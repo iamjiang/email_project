@@ -120,13 +120,7 @@ def main(args, val_data, test_data, test_snapshot_map, test_thread_map, device):
     val_df=Dataset.from_pandas(val_data)
     test_df=Dataset.from_pandas(test_data)
     
-
-    if args.customized_model:   
-        model_path=args.model_name.split("-")[0]+"_"+args.model_name.split("-")[1]+"_"+"customized"
-        model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "v2_new_email/Fine-Tuning", "results",model_path)
-    else:
-        model_path=args.model_name.split("-")[0]+"_"+args.model_name.split("-")[1]
-        model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "v2_new_email/Fine-Tuning", "results",model_path)
+    model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "v2_new_email/Fine-Tuning","short_email", args.output_dir)
             
     config=AutoConfig.from_pretrained(model_name)
     if args.model_name=="bigbird-roberta-large":
@@ -220,7 +214,7 @@ def main(args, val_data, test_data, test_snapshot_map, test_thread_map, device):
     val_pred,val_target,_,_,_=eval_func(val_dataloader,model, device)
     test_pred,test_target,test_snapshot_id,test_thread_id,test_feedback=eval_func(test_dataloader,model, device)
     
-    output_dir=os.path.join("/opt/omniai/work/instance1/jupyter/", "v2_new_email/Fine-Tuning","results",args.output_dir)
+    output_dir=os.path.join(os.getcwd(),args.output_dir)
     
     # with open(os.path.join(output_dir,"metrics_val.txt"),"r") as file:
     #     for line in file:
@@ -283,9 +277,15 @@ if __name__=="__main__":
     args= parser.parse_args()
 
     if args.customized_model:
-        args.output_dir=args.model_name.split("-")[0] + "_" + args.model_name.split("-")[1] + "_customized"
+        if len(args.model_name.split("-"))>=3:
+            args.output_dir=args.model_name.split("-")[0] + "_" + args.model_name.split("-")[1] + "_" + args.model_name.split("-")[2] + "_customized"
+        else:
+            args.output_dir=args.model_name.split("-")[0] + "_" + args.model_name.split("-")[1] + "_customized"
     else:
-        args.output_dir=args.model_name.split("-")[0] + "_" + args.model_name.split("-")[1]
+        if len(args.model_name.split("-"))>=3:
+            args.output_dir=args.model_name.split("-")[0] + "_" + args.model_name.split("-")[1]+ "_" + args.model_name.split("-")[2]
+        else:
+            args.output_dir=args.model_name.split("-")[0] + "_" + args.model_name.split("-")[1]
 
     seed_everything(args.seed)
 
@@ -301,6 +301,12 @@ if __name__=="__main__":
         x=pd.read_pickle(os.path.join(data_path,data))
         df=pd.concat([df,x],axis=0,ignore_index=True)
         # print("{:<20}{:<20,}".format(data.split("_")[-1],x.shape[0]))
+
+    ### only keep emails with status=closed
+    df=df[df.state=="closed"]
+    
+    ### keep short emails with text_length<=512
+    df=df[df.text_length<=512]
     
     df['time'] = pd.to_datetime(df['time'])
     df.sort_values(by='time', inplace = True) 
