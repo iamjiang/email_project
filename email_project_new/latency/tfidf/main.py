@@ -1,4 +1,7 @@
 import sys
+sys.path.append('/opt/omniai/work/instance1/jupyter/v4_new_email/TFIDF/')
+sys.path=list(set(sys.path))
+
 import csv
 csv.field_size_limit(sys.maxsize)
 import time
@@ -14,8 +17,8 @@ from tqdm import tqdm
 tqdm.pandas(position=0,leave=True)
 import itertools
 import spacy
-# model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","en_core_web_md","en_core_web_md-3.3.0")
-# nlp = spacy.load(model_name)
+model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","en_core_web_md","en_core_web_md-3.3.0")
+nlp = spacy.load(model_name)
 # from textblob import TextBlob
 # python -m textblob.download_corpora
 import string
@@ -25,10 +28,10 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 # Load the stopwords from the new directory
-# nltk_data_dir=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","nltk_data")
-# stopwords_file = open(nltk_data_dir + '/corpora/stopwords/english')
-# stopwords_list = stopwords_file.readlines()
-# nltk.data.path.append(nltk_data_dir)
+nltk_data_dir=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","nltk_data")
+stopwords_file = open(nltk_data_dir + '/corpora/stopwords/english')
+stopwords_list = stopwords_file.readlines()
+nltk.data.path.append(nltk_data_dir)
 # Filter out the stopwords from the sentence
 # filtered_words = [word for word in words if word.lower() not in stopwords_list]
 
@@ -65,9 +68,7 @@ from sklearn.exceptions import DataConversionWarning
 warnings.filterwarnings(action='ignore', category=UserWarning, module='sklearn')
 warnings.filterwarnings(action='ignore', category=DataConversionWarning, module='sklearn')
 
-def catboost_traning(x_train,y_train,x_val,y_val,x_test,y_test,\
-                     cat_features_names = ["negative_word"],target="target_variable"):
-    
+def catboost_traning(x_train,y_train,x_val,y_val,cat_features_names = ["negative_word"],target="target_variable"):
     
     cat_features = [x_train.columns.get_loc(col) for col in cat_features_names]
     
@@ -105,9 +106,8 @@ def catboost_traning(x_train,y_train,x_val,y_val,x_test,y_test,\
     
     train_pred=clf_model.predict_proba(x_train)[:,1]
     val_pred=clf_model.predict_proba(x_val)[:,1]
-    test_pred=clf_model.predict_proba(x_test)[:,1]
     
-    return clf_model, train_pred, val_pred, test_pred
+    return clf_model, train_pred, val_pred
 
     # model_dir=os.path.join(os.getcwd(),"tfidf+structure")
     # if not os.path.exists(model_dir):
@@ -117,8 +117,7 @@ def catboost_traning(x_train,y_train,x_val,y_val,x_test,y_test,\
     
 
     
-def lightgbm_training(x_train,y_train,x_val,y_val,x_test,y_test,\
-                      cat_features_names = ["negative_word"],target="target_variable"):
+def lightgbm_training(x_train,y_train,x_val,y_val,cat_features_names = ["negative_word"],target="target_variable"):
     
     train_label=y_train[target].values.squeeze()
     num_classes=np.unique(train_label).shape[0]
@@ -129,7 +128,6 @@ def lightgbm_training(x_train,y_train,x_val,y_val,x_test,y_test,\
     for feature in cat_features_names:
         x_train[feature] = encoder.fit_transform(x_train[feature])
         x_val[feature] = encoder.transform(x_val[feature])
-        x_test[feature] = encoder.transform(x_test[feature])
         
     train_data=lgb.Dataset(x_train, label=y_train,categorical_feature=cat_features)
     val_data=lgb.Dataset(x_val, label=y_val,categorical_feature=cat_features)
@@ -160,13 +158,11 @@ def lightgbm_training(x_train,y_train,x_val,y_val,x_test,y_test,\
     
     train_pred=lgb_model.predict(x_train)
     val_pred=lgb_model.predict(x_val)
-    test_pred=lgb_model.predict(x_test)
     
-    return lgb_model, train_pred, val_pred, test_pred
+    return lgb_model, train_pred, val_pred
 
 
-def xgboost_training(x_train,y_train,x_val,y_val,x_test,y_test,\
-                     cat_features_names = ["negative_word"],target="target_variable"):
+def xgboost_training(x_train,y_train,x_val,y_val,cat_features_names = ["negative_word"],target="target_variable"):
     
     train_label=y_train[target].values.squeeze()
     num_classes=np.unique(train_label).shape[0]
@@ -177,7 +173,6 @@ def xgboost_training(x_train,y_train,x_val,y_val,x_test,y_test,\
     for feature in cat_features_names:
         x_train[feature] = encoder.fit_transform(x_train[feature])
         x_val[feature] = encoder.transform(x_val[feature])
-        x_test[feature] = encoder.transform(x_test[feature])
         
     # Convert data into DMatrix format
     train_data = xgb.DMatrix(x_train, label=y_train)
@@ -206,20 +201,17 @@ def xgboost_training(x_train,y_train,x_val,y_val,x_test,y_test,\
     
     train_pred=xgb_model.predict(xgb.DMatrix(x_train))
     val_pred=xgb_model.predict(xgb.DMatrix(x_val))
-    test_pred=xgb_model.predict(xgb.DMatrix(x_test))
     
-    return xgb_model, train_pred, val_pred, test_pred
+    return xgb_model, train_pred, val_pred
 
 
-def randomforest_training(x_train,y_train,x_val,y_val,x_test,y_test,\
-                          cat_features_names = ["negative_word"]):
+def randomforest_training(x_train,y_train,x_val,y_val,cat_features_names = ["negative_word"]):
 
     cat_features = [x_train.columns.get_loc(col) for col in cat_features_names]
     encoder = LabelEncoder()
     for feature in cat_features_names:
         x_train[feature] = encoder.fit_transform(x_train[feature])
         x_val[feature] = encoder.transform(x_val[feature])
-        x_test[feature] = encoder.transform(x_test[feature])
         
     # Define hyperparameters to vary for validation curve
     param_grid = {"n_estimators": [50,100, 200],"max_depth": [3, 6, 9]}
@@ -236,10 +228,9 @@ def randomforest_training(x_train,y_train,x_val,y_val,x_test,y_test,\
     rf_model= grid_search.best_estimator_
     
     train_pred=rf_model.predict_proba(x_train)[:,1]
-    val_pred=rf_model.predict_proba(x_val)[:,1]
-    test_pred=rf_model.predict_proba(x_test)[:,1]    
+    val_pred=rf_model.predict_proba(x_val)[:,1] 
     
-    return rf_model, train_pred, val_pred, test_pred
+    return rf_model, train_pred, val_pred
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='TFIDF+Classifier')
@@ -265,8 +256,6 @@ if __name__=="__main__":
     parser.add_argument("--val_min_recall", default=0.9, type=float, help="minimal recall for valiation dataset")
     parser.add_argument("--test_date", type=str, default="04_23", help="the month for test set")
     
-    parser.add_argument("--default_threshold", action="store_true", help="undersampling or not")
-    
     args= parser.parse_args()
     
     # args.train_undersampling=True
@@ -280,7 +269,7 @@ if __name__=="__main__":
 
     df_train=pd.read_pickle(os.path.join(data_dir,"train_data_pickle"))
     df_val=pd.read_pickle(os.path.join(data_dir,"val_data_pickle"))
-    df_test=pd.read_pickle(os.path.join(data_dir,"test_data_pickle"))
+    # df_test=pd.read_pickle(os.path.join(data_dir,"test_data_pickle"))
     
     if args.train_undersampling:
         df_train=utils.under_sampling(df_train,"target_variable",seed=args.seed, negative_positive_ratio=args.train_negative_positive_ratio)
@@ -295,25 +284,44 @@ if __name__=="__main__":
     index_val=df_val.loc[:,["snapshot_id","thread_id","time_variable"]]
     x_val=df_val.drop(["target_variable","snapshot_id","thread_id","time_variable"],axis=1)
 
-    y_test=df_test.loc[:,["target_variable"]]
-    index_test=df_test.loc[:,["snapshot_id","thread_id","time_variable"]]
-    x_test=df_test.drop(["target_variable","snapshot_id","thread_id","time_variable"],axis=1)
+    # y_test=df_test.loc[:,["target_variable"]]
+    # index_test=df_test.loc[:,["snapshot_id","thread_id","time_variable"]]
+    # x_test=df_test.drop(["target_variable","snapshot_id","thread_id","time_variable"],axis=1)
     
     cat_features_names = ["negative_word"]
     
     if args.model_name=="catboost":
-        clf_model, train_pred, val_pred, test_pred=catboost_traning(x_train,y_train,x_val,y_val,x_test,y_test,\
-                                                                    cat_features_names=cat_features_names,target="target_variable")
+        clf_model, train_pred, val_pred=catboost_traning(x_train,y_train,x_val,y_val,cat_features_names=cat_features_names,target="target_variable")
+        model_dir=os.path.join(os.getcwd(),"model")
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        joblib.dump(clf_model, os.path.join(model_dir,'clf_model.pkl'))
+        # clf_model = joblib.load(os.path.join(model_dir,'clf.pkl'))
+
+
     elif args.model_name=="lightgbm":
-        lgb_model, train_pred, val_pred, test_pred=lightgbm_training(x_train,y_train,x_val,y_val,x_test,y_test,\
-                                                                     cat_features_names=cat_features_names,target="target_variable")
+        lgb_model, train_pred, val_pred=lightgbm_training(x_train,y_train,x_val,y_val,cat_features_names=cat_features_names,target="target_variable")
+        model_dir=os.path.join(os.getcwd(),"model")
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        joblib.dump(lgb_model, os.path.join(model_dir,'lgb_model.pkl'))
+        # lgb_model = joblib.load(os.path.join(model_dir,'lgb_model.pkl'))
+        
     elif args.model_name=="xgboost":
-        xgb_model, train_pred, val_pred, test_pred=xgboost_training(x_train,y_train,x_val,y_val,x_test,y_test,\
-                                                                    cat_features_names=cat_features_names,target="target_variable")
+        xgb_model, train_pred, val_pred=xgboost_training(x_train,y_train,x_val,y_val,cat_features_names=cat_features_names,target="target_variable")
+        model_dir=os.path.join(os.getcwd(),"model")
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        joblib.dump(xgb_model, os.path.join(model_dir,'xgb_model.pkl'))
+        # xgb_model = joblib.load(os.path.join(model_dir,'xgb_model.pkl'))
         
     elif args.model_name=="randomforest":
-        rf_model, train_pred, val_pred, test_pred=randomforest_training(x_train,y_train,x_val,y_val,x_test,y_test,\
-                                                                        cat_features_names=cat_features_names)
+        rf_model, train_pred, val_pred=randomforest_training(x_train,y_train,x_val,y_val,cat_features_names=cat_features_names)
+        model_dir=os.path.join(os.getcwd(),"model")
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        joblib.dump(rf_model, os.path.join(model_dir,'rf_model.pkl'))
+        # rf_model = joblib.load(os.path.join(model_dir,'rf_model.pkl'))
     else:
         raise ValueError("Invalid model name. Only catboost, lightgbm , xgboost or randomforest are support")
     
@@ -321,59 +329,55 @@ if __name__=="__main__":
     # val_pred=model.predict_proba(x_val)[:,1]
     # test_pred=model.predict_proba(x_test)[:,1]
 
-    if args.default_threshold:
-        best_threshold=0.5
-    else:
-        best_threshold=utils.find_optimal_threshold(y_val.squeeze(), val_pred.squeeze(), min_recall=args.val_min_recall, pos_label=False)
-    y_pred=[1 if x>best_threshold else 0 for x in test_pred]
-    test_output=utils.model_evaluate(y_test.values.reshape(-1),test_pred.squeeze(),best_threshold)
+#     # best_threshold=find_optimal_threshold(y_val.squeeze(), val_pred.squeeze())
+#     best_threshold=utils.find_optimal_threshold(y_val.squeeze(), val_pred.squeeze(), min_recall=args.val_min_recall, pos_label=False)
+#     y_pred=[1 if x>best_threshold else 0 for x in test_pred]
+#     test_output=utils.model_evaluate(y_test.values.reshape(-1),test_pred.squeeze(),best_threshold)
 
-    output_dir=os.path.join("/opt/omniai/work/instance1/jupyter/v4_new_email/TFIDF", "results", args.test_date, args.model_name)
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+#     output_dir=os.path.join("/opt/omniai/work/instance1/jupyter/v4_new_email/TFIDF", "results", args.test_date, args.model_name)
+#     if not os.path.exists(output_dir):
+#         os.makedirs(output_dir)
         
-    text_length=x_test["text_length"].tolist()
-    snapshot_id=index_test["snapshot_id"].tolist()
-    thread_id=index_test["thread_id"].tolist()
-    time=index_test["time_variable"].tolist()
+#     text_length=x_test["text_length"].tolist()
+#     snapshot_id=index_test["snapshot_id"].tolist()
+#     thread_id=index_test["thread_id"].tolist()
+#     time=index_test["time_variable"].tolist()
 
-    # fieldnames = ['True label', 'Predicted label', 'Predicted_prob']
-    fieldnames = ['snapshot_id','thread_id','time','text_length','True_label', 'Predicted_label', 'Predicted_prob','best_threshold']
-    if args.default_threshold:
-        file_name="predictions_default.csv"
-    else:
-        file_name="predictions_"+str(args.val_min_recall).split(".")[-1]+".csv"
+#     # fieldnames = ['True label', 'Predicted label', 'Predicted_prob']
+#     fieldnames = ['snapshot_id','thread_id','time','text_length','True_label', 'Predicted_label', 'Predicted_prob','best_threshold']
+#     # file_name=args.model_name+"_"+"predictions.csv"
+#     file_name="predictions_"+str(args.val_min_recall).split(".")[-1]+".csv"
     
-    with open(os.path.join(output_dir , file_name), 'w') as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames, quoting=csv.QUOTE_NONNUMERIC)
-        writer.writeheader()
-        for i, j, k, t, m, n, p, q in zip(snapshot_id, thread_id, time, text_length, y_test.values.reshape(-1), y_pred, test_pred, [best_threshold]*len(y_pred)):
-            writer.writerow(
-                {'snapshot_id':i,'thread_id':j,'time':k,'text_length':t, 'True_label': m , 'Predicted_label': n, 'Predicted_prob': p, 'best_threshold':q})
+#     with open(os.path.join(output_dir , file_name), 'w') as csv_file:
+#         writer = csv.DictWriter(csv_file, fieldnames=fieldnames, quoting=csv.QUOTE_NONNUMERIC)
+#         writer.writeheader()
+#         for i, j, k, t, m, n, p, q in zip(snapshot_id, thread_id, time, text_length, y_test.values.reshape(-1), y_pred, test_pred, [best_threshold]*len(y_pred)):
+#             writer.writerow(
+#                 {'snapshot_id':i,'thread_id':j,'time':k,'text_length':t, 'True_label': m , 'Predicted_label': n, 'Predicted_prob': p, 'best_threshold':q})
     
-    # file_name=args.model_name+"_"+"metrics_test.txt"
-    # output_dir=os.path.join(os.getcwd(),"tfidf+structure")
-    # with open(os.path.join(output_dir,file_name),'a') as f:
-    #     f.write(f'{args.model_name},{test_output["total positive"]},{test_output["false positive"]},{test_output["false_negative"]}, \
-    #     {test_output["precision"]},{test_output["recall"]},{test_output["f1_score"]},{test_output["AUC"]},{test_output["pr_auc"]},{best_threshold}\n')  
+#     # file_name=args.model_name+"_"+"metrics_test.txt"
+#     # output_dir=os.path.join(os.getcwd(),"tfidf+structure")
+#     # with open(os.path.join(output_dir,file_name),'a') as f:
+#     #     f.write(f'{args.model_name},{test_output["total positive"]},{test_output["false positive"]},{test_output["false_negative"]}, \
+#     #     {test_output["precision"]},{test_output["recall"]},{test_output["f1_score"]},{test_output["AUC"]},{test_output["pr_auc"]},{best_threshold}\n')  
         
-    # output_name=args.model_name+"_"+"y_true_pred.txt"
-    # with open(os.path.join(output_dir,output_name),'w') as f:
-    #     for x,y,z in zip(y_test.target_variable.tolist(),y_pred,test_pred.tolist()):
-    #         f.write(str(x)+","+str(y)+","+str(z)+ '\n')
+#     # output_name=args.model_name+"_"+"y_true_pred.txt"
+#     # with open(os.path.join(output_dir,output_name),'w') as f:
+#     #     for x,y,z in zip(y_test.target_variable.tolist(),y_pred,test_pred.tolist()):
+#     #         f.write(str(x)+","+str(y)+","+str(z)+ '\n')
 
-    print("==> performance on test set \n")
-    print("")
-    print("total positive: {:,} | false positive: {:,} | false_negative: {:,} | precision: {:.2%} | recall: {:.2%} | F1_score: {:.2%} | ROC_AUC: {:.1%} | PR_AUC: {:.1%}".\
-           format(test_output["total positive"], test_output["false positive"], test_output["false_negative"], \
-                 test_output["precision"], test_output["recall"], test_output["f1_score"], test_output["AUC"], test_output["pr_auc"]))
+#     print("==> performance on test set \n")
+#     print("")
+#     print("total positive: {:,} | false positive: {:,} | false_negative: {:,} | precision: {:.2%} | recall: {:.2%} | F1_score: {:.2%} | ROC_AUC: {:.1%} | PR_AUC: {:.1%}".\
+#            format(test_output["total positive"], test_output["false positive"], test_output["false_negative"], \
+#                  test_output["precision"], test_output["recall"], test_output["f1_score"], test_output["AUC"], test_output["pr_auc"]))
 
 
-    print()
-    print(f"\n===========Test Set Performance===============\n")
-    print()
-    y_pred=[1 if x>best_threshold else 0 for x in test_pred]
-    print(classification_report(y_test, y_pred))
-    print()
-    print(confusion_matrix(y_test, y_pred))  
+#     print()
+#     print(f"\n===========Test Set Performance===============\n")
+#     print()
+#     y_pred=[1 if x>best_threshold else 0 for x in test_pred]
+#     print(classification_report(y_test, y_pred))
+#     print()
+#     print(confusion_matrix(y_test, y_pred))  
     

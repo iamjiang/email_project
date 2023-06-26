@@ -14,8 +14,8 @@ from tqdm import tqdm
 tqdm.pandas(position=0,leave=True)
 import itertools
 import spacy
-model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","en_core_web_md","en_core_web_md-3.3.0")
-nlp = spacy.load(model_name)
+# model_name=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","en_core_web_md","en_core_web_md-3.3.0")
+# nlp = spacy.load(model_name)
 # from textblob import TextBlob
 # python -m textblob.download_corpora
 import string
@@ -25,10 +25,10 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 # Load the stopwords from the new directory
-nltk_data_dir=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","nltk_data")
-stopwords_file = open(nltk_data_dir + '/corpora/stopwords/english')
-stopwords_list = stopwords_file.readlines()
-nltk.data.path.append(nltk_data_dir)
+# nltk_data_dir=os.path.join("/opt/omniai/work/instance1/jupyter/", "transformers-models","nltk_data")
+# stopwords_file = open(nltk_data_dir + '/corpora/stopwords/english')
+# stopwords_list = stopwords_file.readlines()
+# nltk.data.path.append(nltk_data_dir)
 # Filter out the stopwords from the sentence
 # filtered_words = [word for word in words if word.lower() not in stopwords_list]
 
@@ -265,6 +265,8 @@ if __name__=="__main__":
     parser.add_argument("--val_min_recall", default=0.9, type=float, help="minimal recall for valiation dataset")
     parser.add_argument("--test_date", type=str, default="04_23", help="the month for test set")
     
+    parser.add_argument("--default_threshold", action="store_true", help="undersampling or not")
+    
     args= parser.parse_args()
     
     # args.train_undersampling=True
@@ -319,8 +321,10 @@ if __name__=="__main__":
     # val_pred=model.predict_proba(x_val)[:,1]
     # test_pred=model.predict_proba(x_test)[:,1]
 
-    # best_threshold=find_optimal_threshold(y_val.squeeze(), val_pred.squeeze())
-    best_threshold=utils.find_optimal_threshold(y_val.squeeze(), val_pred.squeeze(), min_recall=args.val_min_recall, pos_label=False)
+    if args.default_threshold:
+        best_threshold=0.5
+    else:
+        best_threshold=utils.find_optimal_threshold(y_val.squeeze(), val_pred.squeeze(), min_recall=args.val_min_recall, pos_label=False)
     y_pred=[1 if x>best_threshold else 0 for x in test_pred]
     test_output=utils.model_evaluate(y_test.values.reshape(-1),test_pred.squeeze(),best_threshold)
 
@@ -335,8 +339,10 @@ if __name__=="__main__":
 
     # fieldnames = ['True label', 'Predicted label', 'Predicted_prob']
     fieldnames = ['snapshot_id','thread_id','time','text_length','True_label', 'Predicted_label', 'Predicted_prob','best_threshold']
-    # file_name=args.model_name+"_"+"predictions.csv"
-    file_name="predictions_"+str(args.val_min_recall).split(".")[-1]+".csv"
+    if args.default_threshold:
+        file_name="predictions_default.csv"
+    else:
+        file_name="predictions_"+str(args.val_min_recall).split(".")[-1]+".csv"
     
     with open(os.path.join(output_dir , file_name), 'w') as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames, quoting=csv.QUOTE_NONNUMERIC)
